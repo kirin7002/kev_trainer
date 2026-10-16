@@ -1,0 +1,7 @@
+[
+  {"id":"test-01","text":"帮我升起右侧的车窗","intents":["window"]},
+  {"id":"test-02","text":"天窗打开，音乐音量再小一点","intents":["sunroof","volume"]},
+  {"id":"test-03","text":"座椅加热不要关","intents":["seat_heating"]},
+  {"id":"test-04","text":"空调和车窗都关上","intents":["air_conditioner","window"]},
+  {"id":"test-05","text":"谢谢你啦","intents":[]}
+]

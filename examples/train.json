@@ -1,0 +1,12 @@
+[
+  {"id":"train-01","text":"把前排车窗打开一点","intents":["window"]},
+  {"id":"train-02","text":"车窗关上，座椅加热也关掉","intents":["window","seat_heating"]},
+  {"id":"train-03","text":"打开空调","intents":["air_conditioner"]},
+  {"id":"train-04","text":"音量调小，同时关闭天窗","intents":["volume","sunroof"]},
+  {"id":"train-05","text":"座椅加热开到一档","intents":["seat_heating"]},
+  {"id":"train-06","text":"开空调，再开天窗","intents":["air_conditioner","sunroof"]},
+  {"id":"train-07","text":"今天星期几","intents":[]},
+  {"id":"train-08","text":"不要打开天窗","intents":["sunroof"]},
+  {"id":"train-09","text":"降低音量","intents":["volume"]},
+  {"id":"train-10","text":"打开车窗，打开空调，并提高音量","intents":["window","air_conditioner","volume"]}
+]

@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kev Trainer</title>
+<style>
+:root{
+  --bg:#f4f5f3; --panel:#ffffff; --ink:#1c2420; --muted:#5f6f66; --line:#e3e7e2;
+  --green:#1f6f4a; --green-dark:#17553a; --green-soft:#e8f2ec; --green-line:#c5ddce;
+  --amber:#8a6d1f; --amber-soft:#fdf6e3; --amber-line:#e8d9a8;
+  --red:#a13c3c; --red-soft:#fbeeee; --red-line:#e8c9c9;
+  --blue-soft:#eaf1f8; --blue-line:#c9d9ea; --blue:#33566f;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --radius:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+button{font:inherit;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+a{color:var(--green-dark)}
+.layout{display:flex;min-height:100vh}
+/* ---------- sidebar ---------- */
+.sidebar{width:236px;flex:0 0 236px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{padding:20px 18px 14px;border-bottom:1px solid var(--line)}
+.brand h1{margin:0;font-size:17px;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+.brand .logo{width:26px;height:26px;flex:0 0 26px}
+.brand p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.nav{padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+.nav button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;border:none;border-radius:8px;background:none;text-align:left;color:var(--ink);font-size:14px}
+.nav button:hover{background:var(--green-soft)}
+.nav button.active{background:var(--green-soft);color:var(--green-dark);font-weight:600}
+.nav .num{width:20px;height:20px;border-radius:50%;background:var(--line);color:var(--muted);font-size:11px;display:flex;align-items:center;justify-content:center;flex:0 0 20px}
+.nav button.active .num{background:var(--green);color:#fff}
+.nav svg{flex:0 0 16px}
+.health{margin-top:auto;padding:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.health .row{display:flex;justify-content:space-between;gap:8px;padding:3px 0}
+.health b{font-weight:600}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
+.dot.ok{background:#3d8f5f}.dot.bad{background:#c05656}.dot.warn{background:#c9a13b}
+.health .note{margin-top:6px;font-size:11px;line-height:1.5}
+/* ---------- main ---------- */
+.main{flex:1;min-width:0;padding:26px 30px 60px;max-width:1080px}
+.view{display:none}
+.view.active{display:block}
+.view-head{margin-bottom:18px}
+.view-head h2{margin:0 0 4px;font-size:20px}
+.view-head p{margin:0;color:var(--muted);font-size:13px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:18px}
+.panel h3{margin:0 0 12px;font-size:15px}
+.panel h4{margin:14px 0 8px;font-size:13px;color:var(--muted);font-weight:600}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+/* 实验与方案：列表 + 详情两列；minmax(0,1fr) 防止长 SHA/日志/表格撑破列宽 */
+.exp-columns{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start}
+.exp-columns>*{min-width:0}
+@media (max-width:860px){.exp-columns{grid-template-columns:minmax(0,1fr)}}
+/* ---------- form ---------- */
+label.field{display:block;margin-bottom:12px}
+label.field>span{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px;font-weight:600}
+input[type=text],input[type=number],select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--green-line);border-color:var(--green)}
+textarea{resize:vertical}
+.hint{font-size:12px;color:var(--muted);margin:4px 0 0}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:1px solid var(--green);background:var(--green);color:#fff;font-weight:600}
+.btn:hover{background:var(--green-dark)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.ghost{background:#fff;color:var(--green-dark)}
+.btn.ghost:hover{background:var(--green-soft)}
+.btn.danger{border-color:var(--red);background:#fff;color:var(--red)}
+.btn.danger:hover{background:var(--red-soft)}
+.btn.sm{padding:5px 11px;font-size:12.5px}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.spinner{width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+.btn.ghost .spinner,.btn.danger .spinner{border-color:rgba(31,111,74,.3);border-top-color:var(--green)}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* ---------- table ---------- */
+.tablewrap{overflow-x:auto}
+table.data{width:100%;border-collapse:collapse;font-size:13px}
+table.data th{ text-align:left;color:var(--muted);font-weight:600;font-size:12px;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.data td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.data tr:last-child td{border-bottom:none}
+table.data tr.clickable{cursor:pointer}
+table.data tr.clickable:hover td{background:var(--green-soft)}
+.mono{font-family:var(--mono);font-size:12px}
+.tag{display:inline-block;padding:1px 9px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--bg);color:var(--muted);white-space:nowrap}
+.tag.green{background:var(--green-soft);border-color:var(--green-line);color:var(--green-dark)}
+.tag.amber{background:var(--amber-soft);border-color:var(--amber-line);color:var(--amber)}
+.tag.red{background:var(--red-soft);border-color:var(--red-line);color:var(--red)}
+.tag.blue{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue)}
+/* ---------- banners ---------- */
+.banner{border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;border:1px solid}
+.banner.amber{background:var(--amber-soft);border-color:var(--amber-line);color:var(--amber)}
+.banner.blue{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue)}
+.banner.red{background:var(--red-soft);border-color:var(--red-line);color:var(--red)}
+.banner.green{background:var(--green-soft);border-color:var(--green-line);color:var(--green-dark)}
+/* ---------- misc ---------- */
+.empty{text-align:center;padding:36px 16px;color:var(--muted)}
+.empty svg{opacity:.5;margin-bottom:8px}
+.empty p{margin:4px 0}
+code.inline{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+pre.code{font-family:var(--mono);font-size:12px;background:#f7f8f6;border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;margin:8px 0;line-height:1.55}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.kv .item{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.kv .item .k{font-size:11.5px;color:var(--muted)}
+.kv .item .v{font-size:14px;font-weight:600;word-break:break-all}
+.logbox{background:#f7f8f6;border:1px solid var(--line);border-radius:8px;max-height:260px;overflow-y:auto;padding:10px 12px;font-size:12.5px}
+.logbox .line{padding:3px 0;border-bottom:1px dashed var(--line);display:flex;gap:8px}
+.logbox .line:last-child{border-bottom:none}
+.logbox .t{color:var(--muted);font-family:var(--mono);font-size:11px;white-space:nowrap;flex:0 0 auto}
+.logbox .m{white-space:pre-wrap;word-break:break-word}
+/* modal */
+.modal-back{position:fixed;inset:0;background:rgba(20,30,25,.45);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow-y:auto}
+.modal-back.open{display:flex}
+.modal{background:#fff;border-radius:12px;max-width:760px;width:100%;padding:20px;position:relative}
+.modal .close{position:absolute;top:10px;right:12px;border:none;background:none;font-size:20px;color:var(--muted);line-height:1}
+.modal h3{margin:0 0 12px;font-size:16px;padding-right:24px}
+/* distribution bars */
+.dist{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.dist .bar{display:grid;grid-template-columns:170px 1fr 40px;gap:8px;align-items:center;font-size:12px}
+.dist .bar .track{background:var(--bg);border-radius:4px;height:10px;overflow:hidden}
+.dist .bar .fill{background:var(--green);height:100%;border-radius:4px}
+.dist .bar .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dist .bar .cnt{text-align:right;color:var(--muted);font-family:var(--mono)}
+/* plan steps */
+.step{border:1px solid var(--line);border-left:3px solid var(--green);border-radius:8px;padding:10px 14px;margin-bottom:8px;background:#fff}
+.step .st-head{display:flex;gap:8px;align-items:center;margin-bottom:4px}
+.step .st-title{font-weight:600}
+.step .st-desc{color:var(--muted);font-size:13px;white-space:pre-wrap}
+ul.tight{margin:6px 0;padding-left:20px}
+ul.tight li{margin:3px 0}
+/* metric cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;text-align:center}
+.card .k{font-size:11.5px;color:var(--muted)}
+.card .v{font-size:20px;font-weight:700}
+.card .v.up{color:var(--green-dark)}.card .v.down{color:var(--red)}
+.card .s{font-size:11px;color:var(--muted)}
+.delta-pos{color:var(--green-dark);font-weight:700}
+.delta-neg{color:var(--red);font-weight:700}
+/* toast */
+.toasts{position:fixed;bottom:18px;right:18px;z-index:99;display:flex;flex-direction:column;gap:8px;max-width:420px}
+.toast{background:#243128;color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.18);animation:slidein .2s ease}
+.toast.error{background:#7e2f2f}
+.toast.success{background:#1f6f4a}
+@keyframes slidein{from{opacity:0;transform:translateY(6px)}to{opacity:1}}
+/* experiment list */
+.exp-item{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:8px;background:#fff;cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.exp-item:hover{border-color:var(--green-line);background:var(--green-soft)}
+.exp-item.selected{border-color:var(--green);background:var(--green-soft)}
+.exp-item .name{font-weight:600}
+.exp-item .sub{font-size:12px;color:var(--muted)}
+.section-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:none;margin:18px 0 8px}
+.filterbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.pill-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.pill-tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--muted)}
+.pill-tabs button.active{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+/* mobile */
+.mobile-head{display:none}
+@media (max-width:860px){
+  .layout{flex-direction:column}
+  .sidebar{width:100%;flex:none;height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}
+  .brand{padding:14px 16px 10px}
+  .nav{flex-direction:row;overflow-x:auto;padding:8px 10px}
+  .nav button{width:auto;white-space:nowrap;padding:8px 12px}
+  .health{margin-top:0;border-top:1px solid var(--line)}
+  .main{padding:18px 14px 50px}
+  .dist .bar{grid-template-columns:110px 1fr 36px}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>
+        <svg class="logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#1f6f4a"/>
+          <path d="M9 8v16M9 16l8-8M9 16l8 8M20 12h4M20 20h4" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Kev Trainer
+      </h1>
+      <p>Kev 领域微调平台 · 本机版</p>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-view="data" class="active">
+        <span class="num">1</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><ellipse cx="8" cy="3.5" rx="5.5" ry="2" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 3.5v9c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2v-9M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2" stroke="currentColor" stroke-width="1.4"/></svg>
+        数据集
+      </button>
+      <button data-view="create">
+        <span class="num">2</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M8 5v6M5 8h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        创建实验
+      </button>
+      <button data-view="experiments">
+        <span class="num">3</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 2h4M6.5 2v4.2L3.4 12A1.6 1.6 0 0 0 4.8 14h6.4a1.6 1.6 0 0 0 1.4-2L9.5 6.2V2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        实验与方案
+      </button>
+      <button data-view="results">
+        <span class="num">4</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 13h12M4 13V7M8 13V3M12 13V9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        评测结果
+      </button>
+    </nav>
+    <div class="health" id="health-box">
+      <div class="row"><span>状态检查</span><button class="btn ghost sm" id="health-refresh" style="padding:2px 8px;font-size:11px">刷新</button></div>
+      <div id="health-content"><span>正在检查…</span></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- ============ 1 数据集 ============ -->
+    <section class="view active" id="view-data">
+      <div class="view-head">
+        <h2>数据集</h2>
+        <p>上传训练集与测试集。训练集内部会留出验证数据，最终测试集与训练/验证数据隔离。</p>
+      </div>
+
+      <div class="panel">
+        <h3>上传数据</h3>
+        <div class="grid2">
+          <div>
+            <label class="field"><span>用途</span>
+              <select id="up-role">
+                <option value="train">训练集（内部自动留出验证集）</option>
+                <option value="test">测试集（最终评测，隔离保存）</option>
+              </select>
+            </label>
+            <label class="field"><span>文件（.json / .jsonl / .csv，UTF-8，≤ 10 MB，≤ 20,000 条）</span>
+              <input type="file" id="up-file" accept=".json,.jsonl,.csv">
+            </label>
+            <button class="btn" id="up-btn">上传</button>
+          </div>
+          <div>
+            <h4>格式说明</h4>
+            <p class="hint">每条样本需要 <code class="inline">text</code>（或 <code class="inline">state</code>）与标签；标签写在 <code class="inline">intents</code> / <code class="inline">labels</code>（字符串数组）或 <code class="inline">expected_result.intents</code>。也支持含明确布尔 <code class="inline">label</code> 的 Noul <code class="inline">questions</code> 格式。<code class="inline">id</code> 可选（默认自动生成），相同文本的标签必须一致。</p>
+            <pre class="code">[
+  {"id": "case-00001", "text": "把客厅的灯调暗一点", "intents": ["灯"]},
+  {"text": "空调和窗帘都关掉", "intents": ["空调", "窗帘"]},
+  {"text": "今天天气怎么样", "intents": []}
+]</pre>
+            <p class="hint"><b>JSONL</b>：每行一个上述对象。<b>CSV</b>：表头 <code class="inline">text,intents,id,group_id</code>，多标签用 <code class="inline">|</code> 分隔，如 <code class="inline">空调|窗帘</code>；无对象必须显式填 <code class="inline">[]</code>，空值会被视为缺失标签而拒绝（用于区分“缺失”与“显式无对象”）。</p>
+            <div class="btnrow" style="margin-top:8px">
+              <button class="btn ghost sm" id="ex-load-btn">加载示例数据（训练+测试）</button>
+              <a class="btn ghost sm" href="/api/examples/train" download>下载示例训练集</a>
+              <a class="btn ghost sm" href="/api/examples/test" download>下载示例测试集</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>已上传数据集</h3>
+        <div id="ds-list"><div class="empty"><p>加载中…</p></div></div>
+      </div>
+    </section>
+
+    <!-- ============ 2 创建实验 ============ -->
+    <section class="view" id="view-create">
+      <div class="view-head">
+        <h2>创建实验</h2>
+        <p>选择数据集与 Kev 模型版本。创建后由 Claude Code 基于训练/验证数据生成方案；最终测试集不提供给 Claude Code。</p>
+      </div>
+      <div class="panel">
+        <form id="exp-form">
+          <div class="grid2">
+            <div>
+              <label class="field"><span>实验名称 *</span>
+                <input type="text" id="ex-name" maxlength="100" placeholder="例如：智能家居 0.8B 第一次微调" required>
+              </label>
+              <label class="field"><span>训练集 *</span>
+                <select id="ex-train" required></select>
+              </label>
+              <label class="field"><span>测试集 *</span>
+                <select id="ex-test" required></select>
+              </label>
+              <label class="field"><span>基础模型 *</span>
+                <select id="ex-model" required></select>
+              </label>
+              <div id="model-detail"></div>
+            </div>
+            <div>
+              <label class="field"><span>优化目标</span>
+                <input type="text" id="ex-goal" maxlength="1000" value="优先提高多对象整句准确率">
+              </label>
+              <label class="field"><span>补充说明（给 Claude Code 的数据背景、约束等）</span>
+                <textarea id="ex-notes" rows="4" maxlength="3000" placeholder="例如：标签来自智能家居指令，多对象句约占 20%…"></textarea>
+              </label>
+              <label class="field"><span>最大训练时长（分钟，5–1440）</span>
+                <input type="number" id="ex-minutes" min="5" max="1440" value="60">
+              </label>
+              <label class="field"><span>方案生成预算（美元，0.1–20）</span>
+                <input type="number" id="ex-budget" min="0.1" max="20" step="0.1" value="1">
+                <p class="hint">仅用于 Claude Code 生成方案的调用上限，与训练算力无关。</p>
+              </label>
+            </div>
+          </div>
+          <div class="banner blue">训练集与测试集不能包含相同文本或分组；训练集至少需要两个独立文本组才能留出验证集。</div>
+          <button class="btn" id="ex-submit" type="submit">创建实验</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ 3 实验与方案 ============ -->
+    <section class="view" id="view-experiments">
+      <div class="view-head">
+        <h2>实验与方案</h2>
+        <p>选择实验后由 Claude Code 在后台生成训练方案，可实时查看日志。方案就绪后可下载 plan.json。</p>
+      </div>
+      <div id="machine-banner"></div>
+      <div class="exp-columns">
+        <div class="panel" style="margin-bottom:0">
+          <h3>实验列表</h3>
+          <div id="exp-list"><div class="empty"><p>加载中…</p></div></div>
+        </div>
+        <div id="exp-detail"></div>
+      </div>
+    </section>
+
+    <!-- ============ 4 评测结果 ============ -->
+    <section class="view" id="view-results">
+      <div class="view-head">
+        <h2>评测结果</h2>
+        <p>导入原模型（baseline）与候选模型（candidate）在测试集上的预测 JSON，平台按集合匹配计算真实指标。</p>
+      </div>
+      <div class="panel">
+        <label class="field" style="max-width:420px"><span>选择实验</span>
+          <select id="rs-exp"></select>
+        </label>
+      </div>
+      <div id="rs-body"></div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-back" id="modal-back">
+  <div class="modal" id="modal-box">
+    <button class="close" id="modal-close" aria-label="关闭">×</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+<div class="toasts" id="toasts"></div>
+
+<script>
+'use strict';
+/* ================= 通用工具 ================= */
+function h(tag, attrs) {
+  var el = document.createElement(tag);
+  attrs = attrs || {};
+  Object.keys(attrs).forEach(function (k) {
+    var v = attrs[k];
+    if (v === null || v === undefined) return;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k === 'html') throw new Error('html disabled');
+    else if (k.slice(0, 2) === 'on' && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (k === 'disabled' || k === 'checked' || k === 'selected') { if (v) el.setAttribute(k, ''); }
+    else el.setAttribute(k, v);
+  });
+  for (var i = 2; i < arguments.length; i++) {
+    var c = arguments[i];
+    if (c === null || c === undefined || c === false) continue;
+    if (Array.isArray(c)) c.forEach(function (x) { if (x) el.appendChild(typeof x === 'string' ? document.createTextNode(x) : x); });
+    else el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return el;
+}
+function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+function toast(msg, type) {
+  var box = document.getElementById('toasts');
+  var t = h('div', { class: 'toast ' + (type || ''), text: msg });
+  box.appendChild(t);
+  setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, type === 'error' ? 7000 : 4000);
+}
+function errorMessage(data, status) {
+  if (data && typeof data.detail === 'string') return data.detail;
+  if (data && Array.isArray(data.detail)) {
+    return '参数校验未通过：' + data.detail.map(function (d) {
+      var loc = (d.loc || []).slice(1).join('.');
+      return (loc ? loc + ' ' : '') + (d.msg || '无效');
+    }).join('；');
+  }
+  return '请求失败（HTTP ' + status + '）';
+}
+async function api(path, options) {
+  var res;
+  try {
+    res = await fetch(path, options || {});
+  } catch (e) {
+    throw new Error('无法连接后端服务，请确认服务已启动后重试。');
+  }
+  var data = null;
+  var ct = res.headers.get('content-type') || '';
+  if (ct.indexOf('application/json') >= 0) {
+    try { data = await res.json(); } catch (e) { data = null; }
+  }
+  if (!res.ok) throw new Error(errorMessage(data, res.status));
+  return data;
+}
+function busy(btn, on, textOn) {
+  if (on) {
+    btn.dataset.origText = btn.textContent;
+    btn.disabled = true;
+    clear(btn);
+    btn.appendChild(h('span', { class: 'spinner' }));
+    btn.appendChild(document.createTextNode(textOn || '处理中…'));
+  } else {
+    btn.disabled = false;
+    clear(btn);
+    btn.appendChild(document.createTextNode(btn.dataset.origText || '确定'));
+  }
+}
+function fmtTime(iso) {
+  if (!iso) return '—';
+  var d = new Date(iso);
+  if (isNaN(d)) return iso;
+  function p(n) { return String(n).padStart(2, '0'); }
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function shortSha(sha) { return sha ? sha.slice(0, 10) + '…' : '—'; }
+function pct(x, digits) { return (x === null || x === undefined) ? '—' : (x * 100).toFixed(digits === undefined ? 1 : digits) + '%'; }
+function num(x, digits) { return (x === null || x === undefined) ? '—' : Number(x).toFixed(digits === undefined ? 1 : digits); }
+var STATUS_MAP = {
+  draft: ['草稿', ''], planning: ['方案生成中', 'blue'], plan_ready: ['方案就绪', 'green'],
+  cancelling: ['取消中', 'amber'], cancelled: ['已取消', ''], failed: ['失败', 'red'],
+  waiting_for_machine: ['等待 GPU 机器', 'amber'], interrupted: ['已中断', 'amber'], running: ['训练中', 'blue']
+};
+function statusTag(status) {
+  var m = STATUS_MAP[status] || [status || '未知', ''];
+  return h('span', { class: 'tag ' + m[1], text: m[0] });
+}
+function emptyBox(title, sub) {
+  return h('div', { class: 'empty' },
+    h('svg', { width: '34', height: '34', viewBox: '0 0 24 24', fill: 'none' },
+      h('rect', { x: '3', y: '5', width: '18', height: '14', rx: '2', stroke: '#8a978e', 'stroke-width': '1.6' }),
+      h('path', { d: 'M3 10h18M8 15h5', stroke: '#8a978e', 'stroke-width': '1.6', 'stroke-linecap': 'round' })),
+    h('p', { style: 'font-weight:600;color:#3c4a42', text: title }),
+    sub ? h('p', { style: 'font-size:12.5px', text: sub }) : null);
+}
+
+/* ================= 全局状态 ================= */
+var state = {
+  health: null,
+  models: [],
+  datasets: [],
+  experiments: [],
+  selectedExpId: null,
+  selectedExpDetail: null,
+  pollKey: null,
+  pollTimer: null,
+  rsExpId: null,
+  rsDetail: null,
+  rsReport: null,
+  caseFilter: 'wrong'
+};
+
+/* ================= 导航 ================= */
+document.querySelectorAll('#nav button').forEach(function (btn) {
+  btn.addEventListener('click', function () { switchView(btn.dataset.view); });
+});
+function switchView(name) {
+  document.querySelectorAll('#nav button').forEach(function (b) { b.classList.toggle('active', b.dataset.view === name); });
+  document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'view-' + name); });
+  if (name === 'data') loadDatasets();
+  if (name === 'create') refreshCreateOptions();
+  if (name === 'experiments') loadExperiments();
+  if (name === 'results') { loadExperiments().then(refreshResultsOptions); }
+}
+
+/* ================= 健康状态 ================= */
+async function loadHealth() {
+  var box = document.getElementById('health-content');
+  try {
+    var data = await api('/api/health');
+    state.health = data;
+    clear(box);
+    var claudeOk = data.claude && data.claude.installed;
+    box.appendChild(h('div', { class: 'row' },
+      h('span', null, h('span', { class: 'dot ' + (claudeOk ? 'ok' : 'bad') }), 'Claude Code'),
+      h('b', { text: claudeOk ? '已安装' : '未找到' })));
+    var machineOk = data.machine && data.machine.connected;
+    box.appendChild(h('div', { class: 'row' },
+      h('span', null, h('span', { class: 'dot ' + (machineOk ? 'ok' : 'warn') }), 'GPU 机器'),
+      h('b', { text: machineOk ? '已接入' : '未接入' })));
+    box.appendChild(h('div', { class: 'note', text: '仅显示安装状态；已安装不代表已登录，认证在调用时验证。GPU 未接入时可准备数据与方案，不能训练。' }));
+    renderMachineBanner();
+  } catch (e) {
+    clear(box);
+    box.appendChild(h('div', { class: 'row' }, h('span', { class: 'dot bad' }), h('span', { text: e.message })));
+  }
+}
+document.getElementById('health-refresh').addEventListener('click', loadHealth);
+
+function renderMachineBanner() {
+  var box = document.getElementById('machine-banner');
+  clear(box);
+  var m = state.health && state.health.machine;
+  if (!m || m.connected) return;
+  box.appendChild(h('div', { class: 'banner amber' },
+    h('b', { text: '训练等待中：' }),
+    document.createTextNode(m.message || 'GPU 机器尚未接入。可以上传数据并生成方案；接入后才能开始训练，平台不会显示模拟训练进度或结果。')));
+}
+
+/* ================= 1 数据集 ================= */
+async function loadDatasets() {
+  try {
+    state.datasets = await api('/api/datasets');
+    renderDatasets();
+  } catch (e) {
+    document.getElementById('ds-list').replaceChildren(emptyBox('数据集加载失败', e.message));
+  }
+}
+function renderDatasets() {
+  var box = document.getElementById('ds-list');
+  clear(box);
+  if (!state.datasets.length) {
+    box.appendChild(emptyBox('还没有数据集', '上传 .json / .jsonl / .csv 文件，或点击“加载示例数据”快速体验。'));
+    return;
+  }
+  var wrap = h('div', { class: 'tablewrap' });
+  var table = h('table', { class: 'data' },
+    h('thead', null, h('tr', null,
+      h('th', { text: '文件名' }), h('th', { text: '用途' }), h('th', { text: '样本数' }),
+      h('th', { text: '单/多/无对象' }), h('th', { text: '对象数' }),
+      h('th', { text: 'SHA-256' }), h('th', { text: '上传时间' }), h('th', { text: '操作' }))));
+  var tbody = h('tbody');
+  state.datasets.forEach(function (ds) {
+    var p = ds.profile || {};
+    tbody.appendChild(h('tr', null,
+      h('td', { text: ds.filename, style: 'max-width:220px;word-break:break-all' }),
+      h('td', null, ds.role === 'train' ? h('span', { class: 'tag green', text: '训练' }) : h('span', { class: 'tag blue', text: '测试' })),
+      h('td', { class: 'mono', text: String(p.total === undefined ? '—' : p.total) }),
+      h('td', { class: 'mono', text: (p.single || 0) + ' / ' + (p.multi || 0) + ' / ' + (p.unknown || 0) }),
+      h('td', { class: 'mono', text: String(p.object_count === undefined ? '—' : p.object_count) }),
+      h('td', { class: 'mono', title: ds.sha256, text: shortSha(ds.sha256) }),
+      h('td', { text: fmtTime(ds.created_at) }),
+      h('td', null, h('button', {
+        class: 'btn ghost sm', onclick: function () { openDatasetPreview(ds.id, this); }
+      }, '预览'))));
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  box.appendChild(wrap);
+}
+async function openDatasetPreview(id, btn) {
+  busy(btn, true, '加载…');
+  try {
+    var ds = await api('/api/datasets/' + encodeURIComponent(id));
+    showDatasetModal(ds);
+  } catch (e) { toast(e.message, 'error'); }
+  finally { busy(btn, false); }
+}
+function showDatasetModal(ds) {
+  var content = document.getElementById('modal-content');
+  clear(content);
+  content.appendChild(h('h3', { text: '数据预览 · ' + ds.filename }));
+  var p = ds.profile || {};
+  content.appendChild(h('div', { class: 'kv', style: 'margin-bottom:12px' },
+    kvItem('用途', ds.role === 'train' ? '训练集' : '测试集'),
+    kvItem('样本数', String(p.total)),
+    kvItem('单对象 / 多对象 / 无对象', (p.single || 0) + ' / ' + (p.multi || 0) + ' / ' + (p.unknown || 0)),
+    kvItem('不同对象数', String(p.object_count)),
+    kvItem('重复文本条数', String(p.duplicate_texts)),
+    kvItem('SHA-256', ds.sha256)));
+  if (p.warnings && p.warnings.length) {
+    p.warnings.forEach(function (w) { content.appendChild(h('div', { class: 'banner amber', text: '⚠ ' + w })); });
+  }
+  if (p.duplicate_texts > 0) {
+    content.appendChild(h('div', { class: 'banner amber', text: '⚠ 存在 ' + p.duplicate_texts + ' 条重复文本，请确认标签一致且划分符合预期。' }));
+  }
+  var labels = p.labels || {};
+  var entries = Object.keys(labels).map(function (k) { return [k, labels[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+  if (entries.length) {
+    content.appendChild(h('h4', { text: '对象分布（前 ' + Math.min(entries.length, 15) + ' 个）' }));
+    var max = entries[0][1];
+    var dist = h('div', { class: 'dist' });
+    entries.slice(0, 15).forEach(function (e) {
+      dist.appendChild(h('div', { class: 'bar' },
+        h('span', { class: 'name', title: e[0], text: e[0] }),
+        h('span', { class: 'track' }, h('span', { class: 'fill', style: 'width:' + Math.max(2, Math.round(e[1] / max * 100)) + '%' })),
+        h('span', { class: 'cnt', text: String(e[1]) })));
+    });
+    content.appendChild(dist);
+  }
+  content.appendChild(h('h4', { text: '样本预览（前 ' + (ds.preview || []).length + ' 条）' }));
+  var wrap = h('div', { class: 'tablewrap' });
+  var table = h('table', { class: 'data' }, h('thead', null, h('tr', null,
+    h('th', { text: 'ID' }), h('th', { text: '文本' }), h('th', { text: '对象标签' }))));
+  var tbody = h('tbody');
+  (ds.preview || []).forEach(function (r) {
+    tbody.appendChild(h('tr', null,
+      h('td', { class: 'mono', text: r.id }),
+      h('td', { text: r.text, style: 'max-width:340px' }),
+      h('td', null, (r.intents || []).length
+        ? (r.intents || []).map(function (x) { return h('span', { class: 'tag green', style: 'margin:1px 3px 1px 0', text: x }); })
+        : h('span', { class: 'tag', text: '（无对象）' }))));
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  content.appendChild(wrap);
+  document.getElementById('modal-back').classList.add('open');
+}
+function kvItem(k, v) { return h('div', { class: 'item' }, h('div', { class: 'k', text: k }), h('div', { class: 'v', style: 'font-size:12.5px;font-weight:500', text: v })); }
+document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('modal-back').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+function closeModal() { document.getElementById('modal-back').classList.remove('open'); }
+
+document.getElementById('up-btn').addEventListener('click', async function () {
+  var btn = this;
+  var fileInput = document.getElementById('up-file');
+  var role = document.getElementById('up-role').value;
+  if (!fileInput.files.length) { toast('请先选择文件。', 'error'); return; }
+  var fd = new FormData();
+  fd.append('role', role);
+  fd.append('file', fileInput.files[0]);
+  busy(btn, true, '上传中…');
+  try {
+    var meta = await api('/api/datasets', { method: 'POST', body: fd });
+    toast('已上传「' + meta.filename + '」（' + meta.profile.total + ' 条）。', 'success');
+    fileInput.value = '';
+    await loadDatasets();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { busy(btn, false); }
+});
+document.getElementById('ex-load-btn').addEventListener('click', async function () {
+  var btn = this;
+  busy(btn, true, '加载示例…');
+  try {
+    var list = await api('/api/examples', { method: 'POST' });
+    toast('已加载 ' + list.length + ' 个示例数据集。', 'success');
+    await loadDatasets();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { busy(btn, false); }
+});
+
+/* ================= 2 创建实验 ================= */
+async function loadModels() {
+  try {
+    state.models = await api('/api/models');
+  } catch (e) { state.models = []; toast(e.message, 'error'); }
+}
+function dsOption(ds) {
+  var o = h('option', { value: ds.id });
+  o.textContent = ds.filename + '（' + (ds.profile ? ds.profile.total : '?') + ' 条 · ' + shortSha(ds.sha256) + '）';
+  return o;
+}
+function refreshCreateOptions() {
+  loadDatasets().then(function () {
+    var trainSel = document.getElementById('ex-train');
+    var testSel = document.getElementById('ex-test');
+    var keepTrain = trainSel.value, keepTest = testSel.value;
+    clear(trainSel); clear(testSel);
+    trainSel.appendChild(h('option', { value: '', text: '请选择训练集…' }));
+    testSel.appendChild(h('option', { value: '', text: '请选择测试集…' }));
+    state.datasets.forEach(function (ds) {
+      if (ds.role === 'train') trainSel.appendChild(dsOption(ds));
+      if (ds.role === 'test') testSel.appendChild(dsOption(ds));
+    });
+    if (keepTrain) trainSel.value = keepTrain;
+    if (keepTest) testSel.value = keepTest;
+  });
+  var modelSel = document.getElementById('ex-model');
+  if (!state.models.length) return;
+  var keep = modelSel.value;
+  clear(modelSel);
+  state.models.forEach(function (m) {
+    var o = h('option', { value: m.id });
+    o.textContent = m.name + ' ' + m.version;
+    modelSel.appendChild(o);
+  });
+  if (keep) modelSel.value = keep;
+  renderModelDetail();
+}
+function renderModelDetail() {
+  var sel = document.getElementById('ex-model');
+  var box = document.getElementById('model-detail');
+  clear(box);
+  var m = state.models.find(function (x) { return x.id === sel.value; });
+  if (!m) return;
+  box.appendChild(h('div', { class: 'kv' },
+    kvItem('检查点（固定版本）', m.checkpoint),
+    kvItem('基座模型', m.base),
+    kvItem('基座 revision', m.base_revision),
+    kvItem('Kev commit', m.kev_commit),
+    kvItem('LoRA rank / head dim', m.lora_rank + ' / ' + m.head_dim),
+    kvItem('说明', m.description)));
+}
+document.getElementById('ex-model').addEventListener('change', renderModelDetail);
+document.getElementById('exp-form').addEventListener('submit', async function (e) {
+  e.preventDefault();
+  var btn = document.getElementById('ex-submit');
+  var body = {
+    name: document.getElementById('ex-name').value.trim(),
+    train_dataset_id: document.getElementById('ex-train').value,
+    test_dataset_id: document.getElementById('ex-test').value,
+    model_id: document.getElementById('ex-model').value,
+    goal: document.getElementById('ex-goal').value.trim() || '优先提高多对象整句准确率',
+    notes: document.getElementById('ex-notes').value,
+    max_training_minutes: parseInt(document.getElementById('ex-minutes').value, 10),
+    claude_budget_usd: parseFloat(document.getElementById('ex-budget').value)
+  };
+  if (!body.name) { toast('请填写实验名称。', 'error'); return; }
+  if (!body.train_dataset_id || !body.test_dataset_id) { toast('请选择训练集和测试集。', 'error'); return; }
+  if (!body.model_id) { toast('请选择基础模型。', 'error'); return; }
+  if (!Number.isFinite(body.max_training_minutes) || body.max_training_minutes < 5 || body.max_training_minutes > 1440) {
+    toast('最大训练时长需在 5–1440 分钟之间。', 'error'); return;
+  }
+  if (!Number.isFinite(body.claude_budget_usd) || body.claude_budget_usd < 0.1 || body.claude_budget_usd > 20) {
+    toast('方案预算需在 0.1–20 美元之间。', 'error'); return;
+  }
+  busy(btn, true, '创建中…');
+  try {
+    var meta = await api('/api/experiments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    toast('实验「' + meta.name + '」已创建。', 'success');
+    state.selectedExpId = meta.id;
+    switchView('experiments');
+  } catch (err) { toast(err.message, 'error'); }
+  finally { busy(btn, false); }
+});
+
+/* ================= 3 实验与方案 ================= */
+async function loadExperiments() {
+  try {
+    state.experiments = await api('/api/experiments');
+    renderExpList();
+    if (state.selectedExpId && state.experiments.some(function (x) { return x.id === state.selectedExpId; })) {
+      await refreshExpDetail();
+    } else if (state.selectedExpId) {
+      state.selectedExpId = null;
+      document.getElementById('exp-detail').replaceChildren(emptyBox('实验不存在', '请从左侧列表选择实验。'));
+    }
+  } catch (e) {
+    document.getElementById('exp-list').replaceChildren(emptyBox('实验列表加载失败', e.message));
+  }
+}
+function renderExpList() {
+  var box = document.getElementById('exp-list');
+  clear(box);
+  if (!state.experiments.length) {
+    box.appendChild(emptyBox('还没有实验', '在“创建实验”页选择数据与模型后创建。'));
+    return;
+  }
+  var sorted = state.experiments.slice().sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+  sorted.forEach(function (x) {
+    box.appendChild(h('div', {
+      class: 'exp-item' + (x.id === state.selectedExpId ? ' selected' : ''),
+      onclick: function () { state.selectedExpId = x.id; renderExpList(); refreshExpDetail(); }
+    },
+      h('div', { style: 'min-width:0' },
+        h('div', { class: 'name', text: x.name }),
+        h('div', { class: 'sub', text: (x.model ? x.model.name + ' ' + x.model.version : '') + ' · ' + fmtTime(x.created_at) })),
+      statusTag(x.status)));
+  });
+}
+function schedulePolling(detail) {
+  var active = detail && (detail.status === 'planning' || detail.status === 'cancelling');
+  var key = active ? detail.id + ':' + detail.status : null;
+  if (!active) {
+    if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+    state.pollKey = null;
+    return;
+  }
+  if (state.pollKey === key) return;
+  state.pollKey = key;
+  if (state.pollTimer) clearTimeout(state.pollTimer);
+  var tick = async function () {
+    if (state.pollKey !== key) return;
+    try {
+      var fresh = await api('/api/experiments/' + encodeURIComponent(detail.id));
+      if (state.pollKey !== key) return;
+      var changed = !state.selectedExpDetail ||
+        fresh.updated_at !== state.selectedExpDetail.updated_at ||
+        fresh.status !== state.selectedExpDetail.status ||
+        (fresh.events || []).length !== (state.selectedExpDetail.events || []).length;
+      state.selectedExpDetail = fresh;
+      if (changed) renderExpDetail();
+      if (fresh.status !== 'planning' && fresh.status !== 'cancelling') {
+        state.pollKey = null;
+        loadExperiments();
+        return;
+      }
+    } catch (e) { /* 网络抖动时静默重试 */ }
+    if (state.pollKey === key) state.pollTimer = setTimeout(tick, 2500);
+  };
+  state.pollTimer = setTimeout(tick, 2500);
+}
+async function refreshExpDetail() {
+  if (!state.selectedExpId) return;
+  try {
+    state.selectedExpDetail = await api('/api/experiments/' + encodeURIComponent(state.selectedExpId));
+    renderExpDetail();
+  } catch (e) {
+    document.getElementById('exp-detail').replaceChildren(emptyBox('实验详情加载失败', e.message));
+  }
+}
+function renderExpDetail() {
+  var box = document.getElementById('exp-detail');
+  var d = state.selectedExpDetail;
+  clear(box);
+  if (!d) { box.appendChild(emptyBox('未选择实验', '请先在左侧列表选择一个实验。')); return; }
+  schedulePolling(d);
+
+  var panel = h('div', { class: 'panel' });
+  panel.appendChild(h('div', { style: 'display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap' },
+    h('div', null,
+      h('h3', { style: 'margin-bottom:2px', text: d.name }),
+      h('div', { style: 'font-size:12.5px;color:var(--muted)' },
+        document.createTextNode((d.model ? d.model.name + ' ' + d.model.version + ' · ' : '') + '创建于 ' + fmtTime(d.created_at) + ' · 更新于 ' + fmtTime(d.updated_at)))),
+    statusTag(d.status)));
+
+  if (d.error) panel.appendChild(h('div', { class: 'banner red', text: '错误：' + d.error }));
+  if (d.status === 'waiting_for_machine') {
+    panel.appendChild(h('div', { class: 'banner amber', text: '训练等待中：GPU 机器尚未接入。方案已就绪，接入机器后即可开始训练；平台不会模拟训练进度或结果。' }));
+  }
+
+  var s = d.split || {};
+  panel.appendChild(h('div', { class: 'kv' },
+    kvItem('训练 / 验证 / 测试', (s.train === undefined ? '—' : s.train) + ' / ' + (s.validation === undefined ? '—' : s.validation) + ' / ' + (s.test === undefined ? '—' : s.test) + '（seed ' + s.seed + '）'),
+    kvItem('训练集', (d.train_dataset ? d.train_dataset.filename : '—') + ' · ' + shortSha(d.train_dataset && d.train_dataset.sha256)),
+    kvItem('测试集（隔离）', (d.test_dataset ? d.test_dataset.filename : '—') + ' · ' + shortSha(d.test_dataset && d.test_dataset.sha256)),
+    kvItem('优化目标', d.goal || '—'),
+    kvItem('最大训练时长', (d.max_training_minutes || '—') + ' 分钟'),
+    kvItem('方案预算', '$' + (d.claude_budget_usd === undefined ? '—' : d.claude_budget_usd))));
+  if (d.notes) panel.appendChild(h('p', { style: 'font-size:13px;color:var(--muted);margin:10px 0 0' }, '补充说明：' + d.notes));
+
+  /* 操作区 */
+  var actions = h('div', { class: 'btnrow', style: 'margin-top:14px' });
+  var canPlan = ['draft', 'failed', 'cancelled', 'plan_ready', 'interrupted', 'waiting_for_machine'].indexOf(d.status) >= 0;
+  if (canPlan) {
+    var planBtn = h('button', { class: 'btn' }, d.plan ? '重新生成方案' : '生成方案');
+    planBtn.addEventListener('click', async function () {
+      busy(planBtn, true, '提交中…');
+      try {
+        await api('/api/experiments/' + encodeURIComponent(d.id) + '/plan', { method: 'POST' });
+        toast('方案任务已开始，正在后台生成。', 'success');
+        await refreshExpDetail();
+      } catch (e) { toast(e.message, 'error'); busy(planBtn, false); }
+    });
+    actions.appendChild(planBtn);
+  }
+  if (d.status === 'planning' || d.status === 'cancelling') {
+    var cancelBtn = h('button', { class: 'btn danger' }, '取消生成');
+    cancelBtn.addEventListener('click', async function () {
+      busy(cancelBtn, true, '取消中…');
+      try {
+        await api('/api/experiments/' + encodeURIComponent(d.id) + '/cancel', { method: 'POST' });
+        await refreshExpDetail();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { busy(cancelBtn, false); }
+    });
+    actions.appendChild(cancelBtn);
+    actions.appendChild(h('span', { style: 'font-size:12.5px;color:var(--muted)', text: '方案生成中，日志每 2.5 秒自动刷新…' }));
+  }
+  if (d.plan && d.status !== 'planning' && d.status !== 'cancelling') {
+    var trainBtn = h('button', { class: 'btn ghost' }, '开始训练');
+    trainBtn.addEventListener('click', async function () {
+      busy(trainBtn, true, '提交中…');
+      try {
+        await api('/api/experiments/' + encodeURIComponent(d.id) + '/train', { method: 'POST' });
+        toast('训练任务已提交。', 'success');
+      } catch (e) { toast(e.message, 'error'); }
+      finally { busy(trainBtn, false); await refreshExpDetail(); }
+    });
+    actions.appendChild(trainBtn);
+    actions.appendChild(h('span', { style: 'font-size:12px;color:var(--muted)', text: 'GPU 未接入时将进入“等待机器”状态，不会开始训练。' }));
+    actions.appendChild(h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/plan.json', download: 'plan.json' }, '下载 plan.json'));
+  }
+  panel.appendChild(actions);
+  box.appendChild(panel);
+
+  /* 日志 */
+  var logPanel = h('div', { class: 'panel' });
+  logPanel.appendChild(h('h3', { text: '实时日志（Claude Code 输出与平台事件）' }));
+  var events = d.events || [];
+  if (!events.length) {
+    logPanel.appendChild(h('p', { style: 'color:var(--muted);font-size:13px', text: '暂无日志。点击“生成方案”后这里会显示 Claude Code 的真实输出。' }));
+  } else {
+    var logbox = h('div', { class: 'logbox' });
+    events.forEach(function (ev) {
+      logbox.appendChild(h('div', { class: 'line' },
+        h('span', { class: 't', text: fmtTime(ev.time) }),
+        h('span', { class: 'm', text: ev.message })));
+    });
+    logPanel.appendChild(logbox);
+    logbox.scrollTop = logbox.scrollHeight;
+  }
+  box.appendChild(logPanel);
+
+  /* 方案 */
+  if (d.plan) box.appendChild(renderPlanPanel(d));
+}
+var STAGE_MAP = { prepare: '准备', baseline: '基线', train: '训练', evaluate: '评估', compare: '对比' };
+function renderPlanPanel(d) {
+  var pkg = d.plan;
+  var plan = pkg.plan || {};
+  var panel = h('div', { class: 'panel' });
+  panel.appendChild(h('div', { style: 'display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap' },
+    h('h3', { style: 'margin:0', text: '训练方案（Claude Code 生成）' }),
+    h('span', { style: 'font-size:12px;color:var(--muted)', text: '来源：' + (pkg.source || '—') + (pkg.estimated_cost_usd === null || pkg.estimated_cost_usd === undefined ? '' : ' · 本次调用成本约 $' + Number(pkg.estimated_cost_usd).toFixed(4)) })));
+  panel.appendChild(h('div', { class: 'banner blue', text: '方案仅为建议，未执行任何训练；训练超参在接入 GPU 机器后仍需按实际显存验证。' }));
+
+  if (plan.summary) panel.appendChild(h('p', { style: 'white-space:pre-wrap', text: plan.summary }));
+  if (plan.diagnosis && plan.diagnosis.length) {
+    panel.appendChild(h('h4', { text: '数据诊断' }));
+    panel.appendChild(h('ul', { class: 'tight' }, plan.diagnosis.map(function (x) { return h('li', { text: x }); })));
+  }
+  if (plan.steps && plan.steps.length) {
+    panel.appendChild(h('h4', { text: '执行步骤（' + plan.steps.length + '）' }));
+    plan.steps.forEach(function (st, i) {
+      panel.appendChild(h('div', { class: 'step' },
+        h('div', { class: 'st-head' },
+          h('span', { class: 'tag green', text: STAGE_MAP[st.stage] || st.stage || '—' }),
+          h('span', { class: 'st-title', text: (i + 1) + '. ' + (st.title || '') })),
+        h('div', { class: 'st-desc', text: st.description || '' })));
+    });
+  }
+  var t = plan.training || {};
+  panel.appendChild(h('h4', { text: '训练参数建议' }));
+  panel.appendChild(h('div', { class: 'kv' },
+    kvItem('learning_rate', t.learning_rate === undefined ? '—' : String(t.learning_rate)),
+    kvItem('epochs', t.epochs === undefined ? '—' : String(t.epochs)),
+    kvItem('batch_size', t.batch_size === undefined ? '—' : String(t.batch_size)),
+    kvItem('gradient_accumulation', t.gradient_accumulation === undefined ? '—' : String(t.gradient_accumulation))));
+  var ev = plan.evaluation || {};
+  if ((ev.metrics && ev.metrics.length) || (ev.safeguards && ev.safeguards.length)) {
+    panel.appendChild(h('div', { class: 'grid2' },
+      h('div', null, h('h4', { text: '评估指标' }),
+        h('ul', { class: 'tight' }, (ev.metrics || []).map(function (x) { return h('li', { text: x }); }))),
+      h('div', null, h('h4', { text: '防护措施' }),
+        h('ul', { class: 'tight' }, (ev.safeguards || []).map(function (x) { return h('li', { text: x }); })))));
+  }
+  if (plan.notes && plan.notes.length) {
+    panel.appendChild(h('h4', { text: '备注' }));
+    panel.appendChild(h('ul', { class: 'tight' }, plan.notes.map(function (x) { return h('li', { text: x }); })));
+  }
+  return panel;
+}
+
+/* ================= 4 评测结果 ================= */
+function refreshResultsOptions() {
+  var sel = document.getElementById('rs-exp');
+  var keep = state.rsExpId || sel.value;
+  clear(sel);
+  sel.appendChild(h('option', { value: '', text: '请选择实验…' }));
+  var sorted = state.experiments.slice().sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+  sorted.forEach(function (x) {
+    var o = h('option', { value: x.id });
+    o.textContent = x.name + '（' + (STATUS_MAP[x.status] || [x.status])[0] + '）';
+    sel.appendChild(o);
+  });
+  if (keep && sorted.some(function (x) { return x.id === keep; })) sel.value = keep;
+  sel.onchange = function () { selectResultsExp(sel.value); };
+  if (sel.value && !state.rsDetail) selectResultsExp(sel.value);
+  else if (!sel.value) renderResultsBody();
+}
+async function selectResultsExp(id) {
+  state.rsExpId = id || null;
+  state.rsDetail = null;
+  state.rsReport = null;
+  state.caseFilter = 'wrong';
+  if (!id) { renderResultsBody(); return; }
+  try {
+    state.rsDetail = await api('/api/experiments/' + encodeURIComponent(id));
+    try {
+      state.rsReport = await api('/api/experiments/' + encodeURIComponent(id) + '/report');
+    } catch (e) { state.rsReport = null; }
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+  renderResultsBody();
+}
+function renderResultsBody() {
+  var box = document.getElementById('rs-body');
+  clear(box);
+  var d = state.rsDetail;
+  if (!d) {
+    box.appendChild(h('div', { class: 'panel' }, emptyBox('未选择实验', '选择一个实验后，可查看其测试集指纹、导入预测并生成评测报告。')));
+    return;
+  }
+  var sha = d.test_dataset ? d.test_dataset.sha256 : '';
+
+  /* 测试集信息与预测格式 */
+  var infoPanel = h('div', { class: 'panel' });
+  infoPanel.appendChild(h('h3', { text: '测试集与导入格式' }));
+  infoPanel.appendChild(h('div', { class: 'kv', style: 'margin-bottom:8px' },
+    kvItem('测试集', d.test_dataset ? d.test_dataset.filename : '—'),
+    kvItem('样本数', String(d.split ? d.split.test : '—'))));
+  infoPanel.appendChild(h('div', { style: 'margin-bottom:8px' },
+    h('span', { style: 'font-size:12.5px;color:var(--muted);font-weight:600', text: '测试集 SHA-256（预测文件必须携带同一值）：' }),
+    h('div', { class: 'mono', style: 'word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin-top:4px', text: sha || '—' })));
+  infoPanel.appendChild(h('p', { class: 'hint', text: '预测 JSON 格式：dataset_sha256 必填且需与上面一致；predictions 必须覆盖全部测试样本，不能跳过失败样本；intents 为字符串数组（无对象则为空数组）；text 可选（若提供必须与测试样本一致）；latency_ms 可选（非负数值或 null）；runtime 可选（含 device/backend/dtype 字符串，用于判断两侧耗时是否可比）。' }));
+  infoPanel.appendChild(h('pre', { class: 'code', text:
+'{\n' +
+'  "dataset_sha256": "' + (sha || '<测试集 SHA-256>') + '",\n' +
+'  "model": "kev-0.8b-v1.0 @ 原始检查点",\n' +
+'  "runtime": {"device": "NVIDIA A100", "backend": "vllm", "dtype": "bf16"},\n' +
+'  "predictions": [\n' +
+'    {"id": "case-00001", "text": "把客厅的灯调暗", "intents": ["灯"], "latency_ms": 12.3},\n' +
+'    {"id": "case-00002", "intents": [], "latency_ms": null}\n' +
+'  ]\n' +
+'}' }));
+  box.appendChild(infoPanel);
+
+  /* 导入区 */
+  var impPanel = h('div', { class: 'panel' });
+  impPanel.appendChild(h('h3', { text: '导入外部预测' }));
+  impPanel.appendChild(h('div', { class: 'banner amber' },
+    h('b', { text: '来源说明：' }),
+    document.createTextNode('baseline / candidate 预测文件均来自平台外部（例如你在其他环境自行推理的结果）。导入并评测不代表本平台已训练或部署过任何模型；GPU 未接入时平台无法训练。')));
+  var preds = d.predictions || {};
+  var grid = h('div', { class: 'grid2' });
+  [['baseline', '原模型（baseline）预测'], ['candidate', '候选模型（candidate）预测']].forEach(function (pair) {
+    grid.appendChild(importCard(d.id, pair[0], pair[1], !!preds[pair[0]]));
+  });
+  impPanel.appendChild(grid);
+  if (preds.baseline && preds.candidate && !state.rsReport) {
+    impPanel.appendChild(h('div', { class: 'banner blue', text: '两侧预测均已导入，报告应在导入时自动生成；如未显示请点击“刷新报告”。' }));
+    var refreshBtn = h('button', { class: 'btn ghost sm' }, '刷新报告');
+    refreshBtn.addEventListener('click', async function () {
+      busy(refreshBtn, true, '加载…');
+      try { state.rsReport = await api('/api/experiments/' + encodeURIComponent(d.id) + '/report'); renderResultsBody(); }
+      catch (e) { toast(e.message, 'error'); }
+      finally { busy(refreshBtn, false); }
+    });
+    impPanel.appendChild(refreshBtn);
+  }
+  box.appendChild(impPanel);
+
+  /* 报告区 */
+  if (!state.rsReport) {
+    box.appendChild(h('div', { class: 'panel' }, emptyBox('暂无评测报告',
+      '导入 baseline 与 candidate 两份预测 JSON 后，这里会显示基于真实预测计算的准确率、P/R/F1、耗时与错例对比。当前平台未训练模型，也不显示任何模拟结果。')));
+    return;
+  }
+  box.appendChild(renderReport(d, state.rsReport));
+}
+function importCard(expId, kind, title, imported) {
+  var card = h('div', { style: 'border:1px solid var(--line);border-radius:8px;padding:12px' });
+  card.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px' },
+    h('b', { text: title }),
+    imported ? h('span', { class: 'tag green', text: '已导入' }) : h('span', { class: 'tag', text: '未导入' })));
+  var fileInput = h('input', { type: 'file', accept: '.json,application/json' });
+  card.appendChild(fileInput);
+  var btn = h('button', { class: 'btn sm', style: 'margin-top:8px' }, imported ? '重新导入并评测' : '导入并评测');
+  btn.addEventListener('click', async function () {
+    if (!fileInput.files.length) { toast('请先选择预测 JSON 文件。', 'error'); return; }
+    var fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    busy(btn, true, '导入中…');
+    try {
+      var r = await api('/api/experiments/' + encodeURIComponent(expId) + '/predictions/' + kind, { method: 'POST', body: fd });
+      toast('已导入 ' + r.imported + ' 条预测' + (r.report_ready ? '，报告已生成。' : '。'), 'success');
+      await selectResultsExp(expId);
+    } catch (e) { toast(e.message, 'error'); busy(btn, false); }
+  });
+  card.appendChild(btn);
+  card.appendChild(h('p', { class: 'hint', style: 'margin-top:6px', text: '外部预测文件（≤10 MB）。导入不代表平台已训练。' }));
+  return card;
+}
+function metricRow(name, b, c, fmt) {
+  return h('tr', null,
+    h('td', { text: name }),
+    h('td', { class: 'mono', text: fmt(b) }),
+    h('td', { class: 'mono', text: fmt(c) }));
+}
+function renderReport(d, report) {
+  var panel = h('div', { class: 'panel' });
+  panel.appendChild(h('h3', { text: '评测报告' }));
+  panel.appendChild(h('div', { class: 'banner amber' },
+    h('b', { text: '重要：' }),
+    document.createTextNode('本报告完全基于用户导入的外部预测文件（source: ' + (report.source || '—') + '，training_verified: ' + String(!!report.training_verified) + '）。它不代表平台已训练、部署或验证过任何模型。')));
+  if (!report.performance_comparable) {
+    var issues = report.comparability_issues || [];
+    panel.appendChild(h('div', { class: 'banner blue' },
+      h('b', { text: '提示：耗时数据不可严格比较。' }),
+      document.createTextNode(issues.length
+        ? issues.join('') + '准确率等集合指标仍然有效。'
+        : '两侧 runtime（device/backend/dtype）不一致或缺失，和/或部分样本缺少 latency_ms 计时（覆盖不完整），耗时数据不具备严格可比性；准确率等集合指标仍然有效。')));
+  }
+  var b = report.baseline, c = report.candidate;
+
+  /* 顶部卡片 */
+  var delta = report.accuracy_delta;
+  var deltaEl = h('div', { class: 'v ' + (delta > 0 ? 'up' : delta < 0 ? 'down' : ''), text: (delta > 0 ? '+' : '') + (delta * 100).toFixed(1) + ' pp' });
+  panel.appendChild(h('div', { class: 'cards' },
+    h('div', { class: 'card' }, h('div', { class: 'k', text: '整句准确率（原模型）' }), h('div', { class: 'v', text: pct(b.overall.accuracy) }), h('div', { class: 's', text: b.overall.correct + ' / ' + b.overall.total })),
+    h('div', { class: 'card' }, h('div', { class: 'k', text: '整句准确率（候选）' }), h('div', { class: 'v', text: pct(c.overall.accuracy) }), h('div', { class: 's', text: c.overall.correct + ' / ' + c.overall.total })),
+    h('div', { class: 'card' }, h('div', { class: 'k', text: '准确率变化' }), deltaEl, h('div', { class: 's', text: '候选 − 原模型' }),),
+    h('div', { class: 'card' }, h('div', { class: 'k', text: '改对 / 改错' }), h('div', { class: 'v' }, h('span', { class: 'delta-pos', text: String((report.improved_ids || []).length) }), document.createTextNode(' / '), h('span', { class: 'delta-neg', text: String((report.regressed_ids || []).length) }))),
+    h('div', { class: 'card' }, h('div', { class: 'k', text: '测试集 SHA-256' }), h('div', { class: 's mono', style: 'word-break:break-all;margin-top:4px', text: report.dataset_sha256 }))));
+  panel.appendChild(h('p', { class: 'hint' }, '原模型：' + (report.baseline_model || '—') + ' · 候选模型：' + (report.candidate_model || '—')));
+
+  /* 总体指标表 */
+  panel.appendChild(h('div', { class: 'section-title', text: '总体指标' }));
+  panel.appendChild(h('div', { class: 'tablewrap' }, h('table', { class: 'data' },
+    h('thead', null, h('tr', null, h('th', { text: '指标' }), h('th', { text: '原模型' }), h('th', { text: '候选模型' }))),
+    h('tbody', null,
+      metricRow('整句准确率 accuracy', b.overall.accuracy, c.overall.accuracy, function (x) { return pct(x); }),
+      metricRow('precision（集合）', b.overall.precision, c.overall.precision, function (x) { return pct(x); }),
+      metricRow('recall（集合）', b.overall.recall, c.overall.recall, function (x) { return pct(x); }),
+      metricRow('F1（集合）', b.overall.f1, c.overall.f1, function (x) { return pct(x); }),
+      metricRow('macro F1（按对象平均）', b.overall.macro_f1, c.overall.macro_f1, function (x) { return pct(x); }),
+      h('tr', null,
+        h('td', { text: 'TP / FP / FN' }),
+        h('td', { class: 'mono', text: b.overall.true_positive + ' / ' + b.overall.false_positive + ' / ' + b.overall.false_negative }),
+        h('td', { class: 'mono', text: c.overall.true_positive + ' / ' + c.overall.false_positive + ' / ' + c.overall.false_negative }))
+    ))));
+
+  /* 耗时 */
+  panel.appendChild(h('div', { class: 'section-title', text: '推理耗时（来自预测文件的 latency_ms，可选字段）' }));
+  panel.appendChild(h('div', { class: 'tablewrap' }, h('table', { class: 'data' },
+    h('thead', null, h('tr', null, h('th', { text: '统计' }), h('th', { text: '原模型' }), h('th', { text: '候选模型' }))),
+    h('tbody', null,
+      metricRow('有耗时数据的样本', b.overall.latency.count, c.overall.latency.count, function (x) { return String(x) + ' / ' + b.overall.total; }),
+      metricRow('平均耗时 mean', b.overall.latency.mean_ms, c.overall.latency.mean_ms, function (x) { return num(x) + ' ms'; }),
+      metricRow('P50', b.overall.latency.p50_ms, c.overall.latency.p50_ms, function (x) { return num(x) + ' ms'; }),
+      metricRow('P95', b.overall.latency.p95_ms, c.overall.latency.p95_ms, function (x) { return num(x) + ' ms'; })
+    ))));
+
+  /* 分组指标：单对象 / 多对象 / 无对象（准确率 + precision / recall / F1） */
+  panel.appendChild(h('div', { class: 'section-title', text: '分组指标（准确率 / P / R / F1）' }));
+  var groupRows = h('tbody');
+  [['single', '单对象'], ['multi', '多对象'], ['unknown', '无对象']].forEach(function (g) {
+    var gb = (b.groups || {})[g[0]], gc = (c.groups || {})[g[0]];
+    if (!gb || !gc || !gb.total) return;
+    groupRows.appendChild(h('tr', null,
+      h('td', { rowspan: '2', text: g[1] }),
+      h('td', { class: 'mono', rowspan: '2', text: gb.total + ' 条' }),
+      h('td', { text: '原模型' }),
+      h('td', { class: 'mono', text: pct(gb.accuracy) }),
+      h('td', { class: 'mono', text: pct(gb.precision) }),
+      h('td', { class: 'mono', text: pct(gb.recall) }),
+      h('td', { class: 'mono', text: pct(gb.f1) })));
+    groupRows.appendChild(h('tr', null,
+      h('td', { text: '候选' }),
+      h('td', { class: 'mono' }, pct(gc.accuracy) + ' ', deltaTag(gc.accuracy - gb.accuracy)),
+      h('td', { class: 'mono', text: pct(gc.precision) }),
+      h('td', { class: 'mono', text: pct(gc.recall) }),
+      h('td', { class: 'mono', text: pct(gc.f1) })));
+  });
+  panel.appendChild(h('div', { class: 'tablewrap' }, h('table', { class: 'data' },
+    h('thead', null, h('tr', null, h('th', { text: '分组' }), h('th', { text: '样本数' }), h('th', { text: '模型' }),
+      h('th', { text: '准确率' }), h('th', { text: 'P' }), h('th', { text: 'R' }), h('th', { text: 'F1' }))),
+    groupRows)));
+
+  /* 按期望对象数分组的准确率（后端键为 "2"/"3"/"4"…；≥4 用 correct/total 重新汇总为 4+） */
+  var bCount = b.by_object_count || {}, cCount = c.by_object_count || {};
+  var countKeys = Object.keys(Object.assign({}, bCount, cCount))
+    .map(Number).filter(function (n) { return Number.isFinite(n) && n >= 2; })
+    .sort(function (x, y) { return x - y; });
+  var countRows = [];
+  var merged = { label: '4+ 个对象', bc: 0, bt: 0, cc: 0, ct: 0 };
+  countKeys.forEach(function (n) {
+    var gb = bCount[String(n)] || { correct: 0, total: 0 };
+    var gc = cCount[String(n)] || { correct: 0, total: 0 };
+    if (n >= 4) {
+      merged.bc += gb.correct || 0; merged.bt += gb.total || 0;
+      merged.cc += gc.correct || 0; merged.ct += gc.total || 0;
+    } else {
+      countRows.push({ label: n + ' 个对象', bc: gb.correct || 0, bt: gb.total || 0, cc: gc.correct || 0, ct: gc.total || 0 });
+    }
+  });
+  if (merged.bt || merged.ct) countRows.push(merged);
+  if (countRows.length) {
+    panel.appendChild(h('div', { class: 'section-title', text: '按对象数分组准确率（2 / 3 / 4+）' }));
+    var countBody = h('tbody');
+    countRows.forEach(function (r) {
+      var accB = r.bt ? r.bc / r.bt : null, accC = r.ct ? r.cc / r.ct : null;
+      countBody.appendChild(h('tr', null,
+        h('td', { text: r.label }),
+        h('td', { class: 'mono', text: r.bt + ' 条' }),
+        h('td', { class: 'mono', text: pct(accB) + '（' + r.bc + '/' + r.bt + '）' }),
+        h('td', { class: 'mono', text: pct(accC) + '（' + r.cc + '/' + r.ct + '）' }),
+        h('td', null, deltaTag(accB !== null && accC !== null ? accC - accB : null))));
+    });
+    panel.appendChild(h('div', { class: 'tablewrap' }, h('table', { class: 'data' },
+      h('thead', null, h('tr', null, h('th', { text: '对象数' }), h('th', { text: '样本数' }),
+        h('th', { text: '原模型准确率' }), h('th', { text: '候选准确率' }), h('th', { text: '变化' }))),
+      countBody)));
+  }
+  /* 逐对象指标 */
+  panel.appendChild(h('div', { class: 'section-title', text: '逐对象指标（precision / recall / F1）' }));
+  var bObj = {}, cObj = {};
+  (b.overall.per_object || []).forEach(function (o) { bObj[o.object] = o; });
+  (c.overall.per_object || []).forEach(function (o) { cObj[o.object] = o; });
+  var objs = Object.keys(Object.assign({}, bObj, cObj)).sort();
+  if (!objs.length) {
+    panel.appendChild(h('p', { class: 'hint', text: '数据中没有出现任何对象标签。' }));
+  } else {
+    var objBody = h('tbody');
+    objs.forEach(function (name) {
+      var ob = bObj[name], oc = cObj[name];
+      objBody.appendChild(h('tr', null,
+        h('td', { text: name }),
+        h('td', { class: 'mono', text: String(ob ? ob.support : (oc ? oc.support : 0)) }),
+        h('td', { class: 'mono', text: ob ? pct(ob.precision) : '—' }),
+        h('td', { class: 'mono', text: ob ? pct(ob.recall) : '—' }),
+        h('td', { class: 'mono', text: ob ? pct(ob.f1) : '—' }),
+        h('td', { class: 'mono', text: oc ? pct(oc.precision) : '—' }),
+        h('td', { class: 'mono', text: oc ? pct(oc.recall) : '—' }),
+        h('td', { class: 'mono', text: oc ? pct(oc.f1) : '—' })));
+    });
+    panel.appendChild(h('div', { class: 'tablewrap', style: 'max-height:340px;overflow-y:auto' }, h('table', { class: 'data' },
+      h('thead', null,
+        h('tr', null, h('th', { text: '对象' }), h('th', { text: '支持数' }),
+          h('th', { text: 'P(原)' }), h('th', { text: 'R(原)' }), h('th', { text: 'F1(原)' }),
+          h('th', { text: 'P(候选)' }), h('th', { text: 'R(候选)' }), h('th', { text: 'F1(候选)' }))),
+      objBody)));
+  }
+
+  /* 错例表 */
+  panel.appendChild(h('div', { class: 'section-title', text: '用例明细与错例筛选' }));
+  var bCases = {}, cCases = {};
+  (b.cases || []).forEach(function (r) { bCases[r.id] = r; });
+  (c.cases || []).forEach(function (r) { cCases[r.id] = r; });
+  var improved = new Set(report.improved_ids || []);
+  var regressed = new Set(report.regressed_ids || []);
+  var allIds = Object.keys(cCases);
+  var filterDefs = [
+    ['wrong', '任一侧错误'], ['improved', '改对（' + improved.size + '）'], ['regressed', '改错（' + regressed.size + '）'],
+    ['baseline_wrong', '原模型错误'], ['candidate_wrong', '候选错误'], ['all', '全部（' + allIds.length + '）']
+  ];
+  var tabs = h('div', { class: 'pill-tabs' });
+  var tbody = h('tbody');
+  function matches(id, f) {
+    var rb = bCases[id], rc = cCases[id];
+    if (!rb || !rc) return false;
+    if (f === 'wrong') return !rb.passed || !rc.passed;
+    if (f === 'improved') return improved.has(id);
+    if (f === 'regressed') return regressed.has(id);
+    if (f === 'baseline_wrong') return !rb.passed;
+    if (f === 'candidate_wrong') return !rc.passed;
+    return true;
+  }
+  function drawTable() {
+    clear(tbody);
+    var rows = allIds.filter(function (id) { return matches(id, state.caseFilter); });
+    if (!rows.length) {
+      tbody.appendChild(h('tr', null, h('td', { colspan: '6', style: 'text-align:center;color:var(--muted)', text: '该筛选条件下没有用例。' })));
+      return;
+    }
+    rows.slice(0, 500).forEach(function (id) {
+      var rb = bCases[id], rc = cCases[id];
+      var tags = [];
+      if (improved.has(id)) tags.push(h('span', { class: 'tag green', text: '改对' }));
+      if (regressed.has(id)) tags.push(h('span', { class: 'tag red', text: '改错' }));
+      if (!tags.length) tags.push(rb.passed && rc.passed ? h('span', { class: 'tag', text: '两侧均对' }) : h('span', { class: 'tag amber', text: '两侧均错' }));
+      tbody.appendChild(h('tr', null,
+        h('td', { class: 'mono', text: id }),
+        h('td', { text: rc.text, style: 'max-width:240px' }),
+        h('td', null, (rc.expected || []).length ? (rc.expected || []).map(function (x) { return h('span', { class: 'tag', style: 'margin:1px', text: x }); }) : h('span', { class: 'tag', text: '（无）' })),
+        h('td', null, (rb.actual || []).map(function (x) { return h('span', { class: 'tag ' + ((rc.expected || []).indexOf(x) >= 0 ? '' : 'red'), style: 'margin:1px', text: x }); }),
+          rb.passed ? null : h('div', { style: 'margin-top:3px' },
+            (rb.missing || []).length ? h('span', { class: 'hint', text: '漏：' + rb.missing.join('、') + ' ' }) : null,
+            (rb.extra || []).length ? h('span', { class: 'hint', text: '多：' + rb.extra.join('、') }) : null)),
+        h('td', null, (rc.actual || []).map(function (x) { return h('span', { class: 'tag ' + ((rc.expected || []).indexOf(x) >= 0 ? 'green' : 'red'), style: 'margin:1px', text: x }); }),
+          rc.passed ? null : h('div', { style: 'margin-top:3px' },
+            (rc.missing || []).length ? h('span', { class: 'hint', text: '漏：' + rc.missing.join('、') + ' ' }) : null,
+            (rc.extra || []).length ? h('span', { class: 'hint', text: '多：' + rc.extra.join('、') }) : null)),
+        h('td', null, tags)));
+    });
+    if (rows.length > 500) tbody.appendChild(h('tr', null, h('td', { colspan: '6', class: 'hint', text: '仅显示前 500 条，完整数据请下载 report.json。' })));
+  }
+  filterDefs.forEach(function (f) {
+    var t = h('button', { class: f[0] === state.caseFilter ? 'active' : '', text: f[1] });
+    t.addEventListener('click', function () {
+      state.caseFilter = f[0];
+      tabs.querySelectorAll('button').forEach(function (x) { x.classList.remove('active'); });
+      t.classList.add('active');
+      drawTable();
+    });
+    tabs.appendChild(t);
+  });
+  panel.appendChild(h('div', { class: 'filterbar' }, tabs));
+  panel.appendChild(h('div', { class: 'tablewrap', style: 'max-height:420px;overflow-y:auto' }, h('table', { class: 'data' },
+    h('thead', null, h('tr', null,
+      h('th', { text: 'ID' }), h('th', { text: '文本' }), h('th', { text: '期望' }),
+      h('th', { text: '原模型预测' }), h('th', { text: '候选预测' }), h('th', { text: '变化' }))),
+    tbody)));
+  drawTable();
+
+  panel.appendChild(h('div', { class: 'btnrow', style: 'margin-top:14px' },
+    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/report.json', download: 'report.json' }, '下载 report.json'),
+    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/baseline-predictions.json', download: 'baseline-predictions.json' }, '下载 baseline 预测'),
+    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/candidate-predictions.json', download: 'candidate-predictions.json' }, '下载 candidate 预测')));
+  return panel;
+}
+function deltaTag(x) {
+  if (x === null || x === undefined || isNaN(x)) return h('span', { class: 'tag', text: '—' });
+  var cls = x > 0 ? 'delta-pos' : x < 0 ? 'delta-neg' : '';
+  return h('span', { class: cls, text: (x > 0 ? '+' : '') + (x * 100).toFixed(1) + ' pp' });
+}
+
+/* ================= 初始化 ================= */
+(async function init() {
+  loadHealth();
+  await loadModels();
+  await loadDatasets();
+  refreshCreateOptions();
+  document.getElementById('exp-detail').replaceChildren(emptyBox('未选择实验', '请先在左侧列表选择一个实验。'));
+  renderResultsBody();
+})();
+</script>
+</body>
+</html>
