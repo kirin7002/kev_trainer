@@ -21,13 +21,17 @@ class Store:
         return self.root / kind / item_id
 
     def write(self, path, value):
+        payload = json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
+        self.write_bytes(path, payload)
+
+    def write_bytes(self, path, payload):
         with self.lock:
             path = Path(path)
             path.parent.mkdir(parents=True, exist_ok=True)
             temporary = path.with_name('.' + path.name + '.' + uuid.uuid4().hex + '.tmp')
             try:
-                with temporary.open('x', encoding='utf-8') as handle:
-                    json.dump(value, handle, ensure_ascii=False, indent=2, allow_nan=False)
+                with temporary.open('xb') as handle:
+                    handle.write(payload)
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temporary, path)

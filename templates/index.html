@@ -50,9 +50,10 @@ a{color:var(--green-dark)}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:18px}
 .panel h3{margin:0 0 12px;font-size:15px}
 .panel h4{margin:14px 0 8px;font-size:13px;color:var(--muted);font-weight:600}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-@media (max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.grid2>*,.grid3>*{min-width:0}
+@media (max-width:820px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}}
 /* 实验与方案：列表 + 详情两列；minmax(0,1fr) 防止长 SHA/日志/表格撑破列宽 */
 .exp-columns{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start}
 .exp-columns>*{min-width:0}
@@ -60,10 +61,11 @@ a{color:var(--green-dark)}
 /* ---------- form ---------- */
 label.field{display:block;margin-bottom:12px}
 label.field>span{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px;font-weight:600}
-input[type=text],input[type=number],select,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+input[type=text],input:not([type]),input[type=number],select,textarea{width:100%;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+input[type=file]{max-width:100%}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--green-line);border-color:var(--green)}
 textarea{resize:vertical}
-.hint{font-size:12px;color:var(--muted);margin:4px 0 0}
+.hint{font-size:12px;color:var(--muted);margin:4px 0 0;overflow-wrap:anywhere}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:1px solid var(--green);background:var(--green);color:#fff;font-weight:600}
 .btn:hover{background:var(--green-dark)}
 .btn:disabled{opacity:.55;cursor:not-allowed}
@@ -85,13 +87,13 @@ table.data tr:last-child td{border-bottom:none}
 table.data tr.clickable{cursor:pointer}
 table.data tr.clickable:hover td{background:var(--green-soft)}
 .mono{font-family:var(--mono);font-size:12px}
-.tag{display:inline-block;padding:1px 9px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--bg);color:var(--muted);white-space:nowrap}
+.tag{display:inline-block;max-width:100%;padding:1px 9px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--bg);color:var(--muted);overflow-wrap:anywhere}
 .tag.green{background:var(--green-soft);border-color:var(--green-line);color:var(--green-dark)}
 .tag.amber{background:var(--amber-soft);border-color:var(--amber-line);color:var(--amber)}
 .tag.red{background:var(--red-soft);border-color:var(--red-line);color:var(--red)}
 .tag.blue{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue)}
 /* ---------- banners ---------- */
-.banner{border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;border:1px solid}
+.banner{border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;border:1px solid;overflow-wrap:anywhere}
 .banner.amber{background:var(--amber-soft);border-color:var(--amber-line);color:var(--amber)}
 .banner.blue{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue)}
 .banner.red{background:var(--red-soft);border-color:var(--red-line);color:var(--red)}
@@ -141,7 +143,7 @@ ul.tight li{margin:3px 0}
 .delta-pos{color:var(--green-dark);font-weight:700}
 .delta-neg{color:var(--red);font-weight:700}
 /* toast */
-.toasts{position:fixed;bottom:18px;right:18px;z-index:99;display:flex;flex-direction:column;gap:8px;max-width:420px}
+.toasts{position:fixed;bottom:18px;right:18px;z-index:99;display:flex;flex-direction:column;gap:8px;max-width:min(420px,calc(100vw - 36px));overflow-wrap:anywhere}
 .toast{background:#243128;color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.18);animation:slidein .2s ease}
 .toast.error{background:#7e2f2f}
 .toast.success{background:#1f6f4a}
@@ -228,8 +230,13 @@ ul.tight li{margin:3px 0}
               <select id="up-role">
                 <option value="train">训练集（内部自动留出验证集）</option>
                 <option value="test">测试集（最终评测，隔离保存）</option>
+                <option value="calibration">校准集（只用于温度/阈值）</option>
+                <option value="validation">验证集（候选选择）</option>
+                <option value="regression">回归集（已反复查看的用例）</option>
               </select>
             </label>
+            <label class="field"><span>50 对象任务版本（第一阶段必选，旧流程可留空）</span><select id="up-task"><option value="">未绑定任务</option></select></label>
+            <label class="field"><span>数据来源/标注规则</span><input id="up-source" maxlength="1000" placeholder="记录来源、模板和分组规则"></label>
             <label class="field"><span>文件（.json / .jsonl / .csv，UTF-8，≤ 10 MB，≤ 20,000 条）</span>
               <input type="file" id="up-file" accept=".json,.jsonl,.csv">
             </label>
@@ -257,6 +264,23 @@ ul.tight li{margin:3px 0}
         <h3>已上传数据集</h3>
         <div id="ds-list"><div class="empty"><p>加载中…</p></div></div>
       </div>
+      <div class="panel">
+        <h3>固定 50 对象任务目录</h3>
+        <p class="hint">上传 JSON：name 与 objects 数组（恰好 50 项，每项 id、instructions、criteria）。Noul 的 criteria 是 true/false 描述对象，例如 {"true":"涉及此对象","false":"未涉及"}，也可用空对象。目录来自你的业务定义；平台不会编造对象。Noul 数据必须显式标全 50 项，缺失标签不能补为 false。</p>
+        <input id="task-file" type="file" accept=".json">
+        <button id="task-upload" class="btn ghost sm">创建不可变任务版本</button>
+        <div id="task-list" class="hint"></div>
+      </div>
+      <div class="panel">
+        <h3>从训练池派生三个分区</h3>
+        <p class="hint">只使用绑定任务的训练池，按会话/来源/模板/近重复关联组切分，不读取 test/regression。比例按组近似，至少需要三个独立组；派生版本保留父训练池原文件和切分记录。</p>
+        <label class="field"><span>训练池版本</span><select id="split-pool"></select></label>
+        <div class="grid3">
+          <label class="field"><span>calibration 比例</span><input id="split-calibration" type="number" min="0.01" max="0.49" step="0.01" value="0.2"></label>
+          <label class="field"><span>validation 比例</span><input id="split-validation" type="number" min="0.01" max="0.49" step="0.01" value="0.2"></label>
+          <label class="field"><span>切分 seed</span><input id="split-seed" type="number" min="0" value="42"></label>
+        </div><button id="split-create" class="btn ghost sm">创建不可变分区版本</button>
+      </div>
     </section>
 
     <!-- ============ 2 创建实验 ============ -->
@@ -266,6 +290,19 @@ ul.tight li{margin:3px 0}
         <p>选择数据集与 Kev 模型版本。创建后由 Claude Code 基于训练/验证数据生成方案；最终测试集不提供给 Claude Code。</p>
       </div>
       <div class="panel">
+        <h3>第一阶段：手动 0.8B 实验</h3>
+        <p class="hint">独立选择训练、校准、验证和最终测试版本；回归集可选。所有分区必须绑定同一任务目录，关联组不能跨区。运行者显式启用并验证 CUDA Worker 后可执行训练；未接入时可检查输入和下载准备包。</p>
+        <div class="grid2">
+          <div><label class="field"><span>实验名称</span><input id="manual-name" maxlength="100"></label>
+            <label class="field"><span>任务版本</span><select id="manual-task"></select></label>
+            <label class="field"><span>候选数量上限</span><input id="manual-count" type="number" min="1" max="20" value="1"></label>
+            <label class="field"><span>实验统一总分钟上限（含评测）</span><input id="manual-minutes" type="number" min="5" max="1440" value="60"></label></div>
+          <div id="manual-partitions"></div>
+        </div>
+        <button class="btn" id="manual-create">建立手动实验</button>
+      </div>
+      <div class="panel">
+        <h3>已有方案准备流程</h3>
         <form id="exp-form">
           <div class="grid2">
             <div>
@@ -457,6 +494,263 @@ var state = {
   rsReport: null,
   caseFilter: 'wrong'
 };
+var ROLE_NAMES = { train: '训练集', calibration: '校准集', validation: '验证集', test: '最终测试集', regression: '回归集' };
+var taskVersions = [];
+
+async function loadTasks() {
+  try {
+    taskVersions = await api('/api/task-specs');
+    ['up-task', 'manual-task'].forEach(function (id) {
+      var select = document.getElementById(id), keep = select.value;
+      clear(select);
+      select.appendChild(h('option', { value: '', text: '请选择任务版本…' }));
+      taskVersions.forEach(function (task) { select.appendChild(h('option', { value: task.id, text: task.name + ' · ' + shortSha(task.sha256) })); });
+      if (keep) select.value = keep;
+    });
+    document.getElementById('task-list').textContent = '已有 ' + taskVersions.length + ' 个不可变任务版本。';
+    refreshManualOptions();
+  } catch (e) { toast(e.message, 'error'); }
+}
+function refreshManualOptions() {
+  var box = document.getElementById('manual-partitions');
+  var task = document.getElementById('manual-task').value;
+  var keep = {};
+  Object.keys(ROLE_NAMES).forEach(function (role) { var old = document.getElementById('manual-' + role); keep[role] = old ? old.value : ''; });
+  clear(box);
+  Object.keys(ROLE_NAMES).forEach(function (role) {
+    var select = h('select', { id: 'manual-' + role });
+    select.appendChild(h('option', { value: '', text: role === 'regression' ? '未提供回归集（可选）' : '请选择' + ROLE_NAMES[role] }));
+    state.datasets.filter(function (ds) { return ds.role === role && ds.task_spec_id === task; }).forEach(function (ds) { select.appendChild(dsOption(ds)); });
+    if (keep[role]) select.value = keep[role];
+    box.appendChild(h('label', { class: 'field' }, h('span', { text: ROLE_NAMES[role] }), select));
+  });
+  var pool = document.getElementById('split-pool'), selectedPool = pool.value;
+  clear(pool); pool.appendChild(h('option', { value: '', text: '请选择训练池…' }));
+  state.datasets.filter(function (ds) { return ds.role === 'train' && ds.task_spec_id; }).forEach(function (ds) { pool.appendChild(dsOption(ds)); });
+  if (selectedPool) pool.value = selectedPool;
+}
+document.getElementById('split-create').addEventListener('click', async function () {
+  var btn = this, id = document.getElementById('split-pool').value;
+  if (!id) { toast('请选择绑定任务的训练池。', 'error'); return; }
+  busy(btn, true, '切分中…');
+  try {
+    await api('/api/datasets/' + encodeURIComponent(id) + '/split', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      calibration_fraction: Number(document.getElementById('split-calibration').value),
+      validation_fraction: Number(document.getElementById('split-validation').value), seed: Number(document.getElementById('split-seed').value)
+    }) });
+    await loadDatasets(); toast('已生成训练/校准/验证三个新版本，原训练池保留。', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { busy(btn, false); }
+});
+document.getElementById('manual-task').addEventListener('change', refreshManualOptions);
+document.getElementById('task-upload').addEventListener('click', async function () {
+  var file = document.getElementById('task-file').files[0], btn = this;
+  if (!file) { toast('请选择任务目录 JSON。', 'error'); return; }
+  if (file.size > 65536) { toast('任务目录不能超过 64 KB。', 'error'); return; }
+  busy(btn, true, '保存中…');
+  try {
+    var task = await api('/api/task-specs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
+    await loadTasks();
+    document.getElementById('up-task').value = task.id;
+    document.getElementById('manual-task').value = task.id;
+    refreshManualOptions();
+    toast('任务版本已固定，请按五类分区导入数据。', 'success');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { busy(btn, false); }
+});
+document.getElementById('manual-create').addEventListener('click', async function () {
+  var btn = this, partitions = {};
+  Object.keys(ROLE_NAMES).forEach(function (role) { var value = document.getElementById('manual-' + role).value; if (value) partitions[role] = value; });
+  busy(btn, true, '创建中…');
+  try {
+    var experiment = await api('/api/manual-experiments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      name: document.getElementById('manual-name').value, task_spec_id: document.getElementById('manual-task').value,
+      partitions: partitions, max_trials: Number(document.getElementById('manual-count').value),
+      max_training_minutes: Number(document.getElementById('manual-minutes').value)
+    }) });
+    state.selectedExpId = experiment.id;
+    switchView('experiments');
+  } catch (e) { toast(e.message, 'error'); }
+  finally { busy(btn, false); }
+});
+
+async function renderManualTrials(experiment, box) {
+  try {
+    var values = await Promise.all([api('/api/experiments/' + encodeURIComponent(experiment.id) + '/trials'), api('/api/preparation')]);
+    if (state.selectedExpId !== experiment.id) return;
+    clear(box);
+    box.appendChild(h('h3', { text: '手动 Trial 与执行状态' }));
+    var prep = values[1];
+    box.appendChild(h('p', { class: 'hint', text: 'Worker：' + prep.workers.length + ' 个登记；训练执行' + (prep.execution_enabled ? '已显式启用，仍需在线 Worker 验证' : '未启用') + '。CPU 准备通过不表示 GPU 已接入。' }));
+    var budget = (prep.budgets || {})[experiment.id];
+    if (budget) box.appendChild(h('p', { class: 'hint', text: '统一预算已计入 ' + (budget.charged_seconds / 60).toFixed(2) + ' / ' + (budget.limit_seconds / 60) + ' 分钟；按整个 GPU 作业墙钟保守计费，含基线、训练、评测与上传。' }));
+    var baseline = h('button',{class:'btn ghost sm',disabled:!prep.execution_enabled},'只测原模型基线（不创建 Trial）');
+    baseline.addEventListener('click',async function(){
+      busy(baseline,true,'提交中…');
+      try { await api('/api/experiments/'+encodeURIComponent(experiment.id)+'/baseline',{method:'POST'}); await renderManualTrials(experiment,box); }
+      catch(e){toast(e.message,'error');busy(baseline,false);}
+    });box.appendChild(baseline);
+    prep.jobs.filter(function(job){return job.experiment_id===experiment.id&&job.kind==='gpu_baseline_v1';}).forEach(function(job){
+      var item=h('div',{class:'panel'},h('p',{text:'独立基线 · '+job.state+' · '+(job.stage||'等待领取')+' · training_verified=false'}));
+      if(job.state==='SUCCEEDED'&&!job.promotion_pending)item.appendChild(h('a',{class:'btn ghost sm',href:'/api/experiments/'+encodeURIComponent(experiment.id)+'/baseline',target:'_blank',rel:'noopener'},'查看最近基线报告'));
+      if(['QUEUED','RUNNING','CANCELLING','WAITING_FOR_STOP_CONFIRMATION'].indexOf(job.state)>=0){
+        var cancel=h('button',{class:'btn danger sm'},'取消基线作业');
+        cancel.addEventListener('click',async function(){try{await api('/api/jobs/'+encodeURIComponent(job.id)+'/cancel',{method:'POST'});await renderManualTrials(experiment,box);}catch(e){toast(e.message,'error');}});item.appendChild(cancel);
+      }box.appendChild(item);
+    });
+    values[0].forEach(function (trial) {
+      var card = h('div', { class: 'panel' });
+      card.appendChild(h('h4', { text: 'Trial ' + trial.id.slice(0, 8) + ' · ' + trial.status }));
+      card.appendChild(h('pre', { class: 'code', text: JSON.stringify(trial.config.parameters, null, 2) }));
+      card.appendChild(h('p', { class: 'hint', text: '训练验证：' + String(!!trial.training_verified) + '。配置 SHA：' + trial.config_sha256 }));
+      var row = h('div', { class: 'btnrow' });
+      row.appendChild(h('a', { class: 'btn ghost sm', href: '/api/trials/' + encodeURIComponent(trial.id) + '/preparation.zip', download: 'preparation.zip' }, '下载准备包（非模型）'));
+      var prepare = h('button', { class: 'btn sm' }, '提交 CPU 准备检查');
+      prepare.addEventListener('click', async function () {
+        busy(prepare, true, '提交中…');
+        try { await api('/api/trials/' + encodeURIComponent(trial.id) + '/preflight', { method: 'POST' }); await renderManualTrials(experiment, box); }
+        catch (e) { toast(e.message, 'error'); busy(prepare, false); }
+      });
+      row.appendChild(prepare); card.appendChild(row);
+      var train = h('button', { class: 'btn sm', disabled: !prep.execution_enabled }, '提交 GPU 训练');
+      train.addEventListener('click', async function () {
+        busy(train, true, '提交中…');
+        try { await api('/api/trials/' + encodeURIComponent(trial.id) + '/train', { method: 'POST' }); await renderManualTrials(experiment, box); }
+        catch (e) { toast(e.message, 'error'); busy(train, false); }
+      }); row.appendChild(train);
+      if (trial.active_model && trial.active_model.training_verified && trial.active_model.loader_verified) {
+        row.appendChild(h('a', { class: 'btn ghost sm', href: '/api/trials/' + encodeURIComponent(trial.id) + '/model.zip', download: 'model.zip' }, '下载模型包（需缓存固定基座）'));
+      }
+      card.appendChild(h('p', { class: 'hint', text: 'validation SHA：' + experiment.manifest.partitions.validation.sha256 + '。先导入该分区的完整外部预测，再选择候选；最终 test 不用于排名。' }));
+      var validationFile = h('input', { type: 'file', accept: '.json' }); card.appendChild(validationFile);
+      var validationButton = h('button', { class: 'btn ghost sm' }, '导入 validation 预测');
+      validationButton.addEventListener('click', async function () {
+        if (!validationFile.files.length) { toast('请选择 validation 预测 JSON。', 'error'); return; }
+        var form = new FormData(); form.append('file', validationFile.files[0]);
+        try { await api('/api/trials/' + encodeURIComponent(trial.id) + '/validation-predictions', { method: 'POST', body: form }); await renderManualTrials(experiment, box); }
+        catch (e) { toast(e.message, 'error'); }
+      }); card.appendChild(validationButton);
+      if (trial.validation_summary) {
+        card.appendChild(h('p', { text: 'validation 准确率：' + pct(trial.validation_summary.accuracy) + ' · 来源：' + (trial.active_model ? trial.active_model.source : 'user_imported_predictions') + '，训练验证：' + String(!!trial.training_verified) }));
+        var select = h('button', { class: 'btn ghost sm' }, experiment.selected_trial_id === trial.id ? '已选候选' : '按 validation 选定此候选');
+        select.addEventListener('click', async function () {
+          try { await api('/api/experiments/' + encodeURIComponent(experiment.id) + '/select-trial', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trial_id: trial.id }) }); await refreshExpDetail(); }
+          catch (e) { toast(e.message, 'error'); }
+        }); card.appendChild(select);
+      }
+      prep.jobs.filter(function (job) { return job.trial_id === trial.id; }).forEach(function (job) {
+        var jobNames = { QUEUED: '排队中', RUNNING: '检查中', CANCELLING: '取消中', WAITING_FOR_STOP_CONFIRMATION: '等待旧进程停止确认', SUCCEEDED: '检查通过', FAILED: '检查失败', CANCELLED: '已取消', EXPIRED: '租约已过期' };
+        var entry = h('div', { style: 'margin-top:8px', 'data-job-state': job.state }, h('span', { class: 'tag', text: (job.kind === 'cpu_preflight_v1' ? 'CPU 准备' : job.kind === 'gpu_training_v1' ? 'GPU 训练' : '最终评测') + '：' + (jobNames[job.state] || job.state) + (job.stage ? ' · ' + job.stage : '') }));
+        if (job.result) {
+          entry.appendChild(h('p', { class: 'hint', text: '执行来源：' + (job.result.source || job.kind) + ' · training_verified=' + String(!!job.training_verified) }));
+          entry.appendChild(h('details', null, h('summary', { text: '检查详情与日志' }), h('pre', { class: 'code', text: JSON.stringify(job.result, null, 2) })));
+        }
+        if (['QUEUED', 'RUNNING', 'CANCELLING', 'WAITING_FOR_STOP_CONFIRMATION'].indexOf(job.state) >= 0) {
+          var cancel = h('button', { class: 'btn danger sm' }, '取消作业');
+          cancel.addEventListener('click', async function () {
+            try { await api('/api/jobs/' + encodeURIComponent(job.id) + '/cancel', { method: 'POST' }); await renderManualTrials(experiment, box); }
+            catch (e) { toast(e.message, 'error'); }
+          }); entry.appendChild(cancel);
+        }
+        card.appendChild(entry);
+      });
+      box.appendChild(card);
+    });
+    if (experiment.selected_trial_id && prep.execution_enabled && !experiment.final_evaluation_job_id) {
+      var finalEvaluate = h('button', { class: 'btn' }, '冻结候选并提交一次最终 GPU 评测');
+      finalEvaluate.addEventListener('click', async function () {
+        busy(finalEvaluate, true, '提交中…');
+        try { await api('/api/experiments/' + encodeURIComponent(experiment.id) + '/evaluate', { method: 'POST' }); await refreshExpDetail(); }
+        catch (e) { toast(e.message, 'error'); busy(finalEvaluate, false); }
+      }); box.appendChild(finalEvaluate);
+    }
+    if (values[0].length < experiment.limits.max_trials) {
+    var form = h('form', { class: 'panel' });
+    form.appendChild(h('h4', { text: '新增不可变 Trial（参数由你指定）' }));
+    [['learning_rate', '学习率', '0.0001'], ['epochs', 'epochs', '2'], ['batch_size', 'batch size', '1'],
+      ['gradient_accumulation', '梯度累积', '1'], ['seed', '随机种子', '42']].forEach(function (field) {
+      form.appendChild(h('label', { class: 'field' }, h('span', { text: field[1] }), h('input', { name: field[0], type: 'number', step: 'any', required: '', placeholder: '例如 ' + field[2] })));
+    });
+    var precision = h('select', { name: 'precision', required: '' }, h('option', { value: '', text: '请选择精度' }));
+    ['bf16', 'fp32'].forEach(function (value) { precision.appendChild(h('option', { value: value, text: value })); });
+    form.appendChild(h('label', { class: 'field' }, h('span', { text: '精度（仍需 GPU 验证支持）' }), precision));
+    form.appendChild(h('button', { class: 'btn', type: 'submit' }, '保存 Trial'));
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      var body = {}; new FormData(form).forEach(function (value, key) { body[key] = key === 'precision' ? value : Number(value); });
+      try { await api('/api/experiments/' + encodeURIComponent(experiment.id) + '/trials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); await renderManualTrials(experiment, box); }
+      catch (e) { toast(e.message, 'error'); }
+    }); box.appendChild(form);
+    } else box.appendChild(h('p', { class: 'hint', text: '已达到此实验的候选数量上限。已有 Trial 配置保持固定，可继续检查、评测和下载准备包。' }));
+    var refresh = h('button', { class: 'btn ghost sm' }, '刷新准备检查状态');
+    refresh.addEventListener('click', function () { renderManualTrials(experiment, box); }); box.appendChild(refresh);
+    var optimizationBox = h('div'); box.appendChild(optimizationBox);
+    await renderOptimizations(experiment, optimizationBox);
+  } catch (e) { if (state.selectedExpId === experiment.id) box.textContent = e.message; }
+}
+
+async function renderOptimizations(experiment, box) {
+  try {
+    var sessions = await api('/api/experiments/' + encodeURIComponent(experiment.id) + '/optimizations');
+    if (state.selectedExpId !== experiment.id || !box.isConnected) return;
+    clear(box);
+    box.appendChild(h('h3', { text: '自动候选方案与人工审查' }));
+    box.appendChild(h('p', { class: 'hint', text: '方案先独立校验、人工批准，再单独开始；只按 validation 选择，最终 test 另行批准。GPU/付费 Claude 默认关闭。' }));
+    var budget = h('input', { type: 'number', min: '0', max: '20', step: '0.01', value: '0', 'aria-label': 'Claude 实验总美元额度' });
+    var create = h('button', { class: 'btn ghost sm' }, '新建方案审查（0 额度可离线导入）');
+    create.addEventListener('click', async function () {
+      try { await api('/api/experiments/' + encodeURIComponent(experiment.id) + '/optimizations', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({claude_budget_usd:Number(budget.value)}) }); await renderOptimizations(experiment, box); }
+      catch (e) { toast(e.message, 'error'); }
+    });
+    box.appendChild(h('label', { class: 'field' }, h('span', { text: '本实验 Claude 总额度（后续方案不能重置）' }), budget)); box.appendChild(create);
+    for (var i = 0; i < sessions.length; i++) {
+      let session = sessions[i];
+      let panel = h('div', { class: 'panel' }); box.appendChild(panel);
+      panel.appendChild(h('h4', { text: session.id.slice(0,8) + ' · ' + session.state }));
+      panel.appendChild(h('p', { class: 'hint', text: '方案 SHA：' + (session.plan_sha256 || '尚无') + ' · 停止原因：' + (session.stop_reason || '—') }));
+      panel.appendChild(h('pre', { class: 'code', text: JSON.stringify({history:session.history,approval:session.approval,error:session.error}, null, 2) }));
+      let action = async function (operation, body) {
+        try { await api('/api/optimizations/' + encodeURIComponent(session.id) + '/' + operation, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body || {})}); await refreshExpDetail(); }
+        catch (e) { toast(e.message, 'error'); }
+      };
+      if (['CREATED','WAITING_REVIEW','REJECTED','INTERRUPTED','PLANNING_FAILED'].indexOf(session.state) >= 0) {
+        let file = h('input', {type:'file',accept:'.json'});
+        let upload = h('button', {class:'btn ghost sm'}, '导入结构化方案 JSON');
+        upload.addEventListener('click', async function () {
+          try { if (!file.files.length) throw new Error('请选择 v2 方案 JSON。'); await action('import-plan', {plan:JSON.parse(await file.files[0].text())}); }
+          catch (e) { toast(e.message, 'error'); }
+        }); panel.appendChild(file); panel.appendChild(upload);
+        let cost = h('input', {type:'number',min:'0.000001',max:'20',step:'0.01','aria-label':'本次付费调用上限'});
+        let paid = h('input', {type:'checkbox','aria-label':'批准本次付费调用'});
+        let generate = h('button', {class:'btn ghost sm'}, '按本次额度调用已配置 Claude');
+        generate.addEventListener('click', function () { if (!paid.checked) { toast('需明确勾选本次收费批准；可继续离线导入。','error'); return; } action('generate',{allow_paid_call:true,max_cost_usd:Number(cost.value)}); });
+        panel.appendChild(h('label', {class:'field'}, h('span',{text:'本次调用美元上限（不退还可能已用额度）'}),cost));
+        panel.appendChild(h('label', null, paid, '批准本次付费调用')); panel.appendChild(generate);
+      }
+      if (session.plan_sha256) {
+        panel.appendChild(h('a', {class:'btn ghost sm',href:'/api/optimizations/'+encodeURIComponent(session.id)+'/plan.md',download:'plan.md'}, '下载审查方案'));
+      }
+      if (session.state === 'WAITING_REVIEW') {
+        let detail = await api('/api/optimizations/'+encodeURIComponent(session.id));
+        if (state.selectedExpId !== experiment.id || !box.isConnected) return;
+        panel.appendChild(h('pre', {class:'code',text:JSON.stringify(detail.plan,null,2)}));
+        let reviewer = h('input', {'aria-label':'审查人',placeholder:'审查人'});
+        let notes = h('input', {'aria-label':'审查意见',placeholder:'审查意见（必填）'});
+        panel.appendChild(reviewer); panel.appendChild(notes);
+        ['approve','reject'].forEach(function (decision) {
+          var button = h('button',{class:'btn ghost sm'},decision === 'approve' ? '批准当前 SHA 方案' : '拒绝当前方案');
+          button.addEventListener('click',function(){ action('review',{plan_sha256:session.plan_sha256,decision:decision,reviewer:reviewer.value,notes:notes.value}); }); panel.appendChild(button);
+        });
+      }
+      if (session.state === 'APPROVED') {
+        let start = h('button',{class:'btn'},'开始已批准的串行候选'); start.addEventListener('click',function(){action('start');}); panel.appendChild(start);
+      }
+      if (['RUNNING','WAITING_RESOURCE','CANCELLING','PLANNING','APPROVED','WAITING_REVIEW','PAUSED_ERROR'].indexOf(session.state) >= 0) {
+        let cancel = h('button',{class:'btn danger sm'},'取消自动方案');cancel.addEventListener('click',function(){action('cancel');});panel.appendChild(cancel);
+      }
+    }
+  } catch (e) { if (state.selectedExpId === experiment.id) box.textContent = e.message; }
+}
 
 /* ================= 导航 ================= */
 document.querySelectorAll('#nav button').forEach(function (btn) {
@@ -502,13 +796,14 @@ function renderMachineBanner() {
   if (!m || m.connected) return;
   box.appendChild(h('div', { class: 'banner amber' },
     h('b', { text: '训练等待中：' }),
-    document.createTextNode(m.message || 'GPU 机器尚未接入。可以上传数据并生成方案；接入后才能开始训练，平台不会显示模拟训练进度或结果。')));
+    document.createTextNode(m.message || 'GPU 机器与训练执行器尚未接入。可以上传数据并生成方案，平台不会显示模拟训练进度或结果。')));
 }
 
 /* ================= 1 数据集 ================= */
 async function loadDatasets() {
   try {
     state.datasets = await api('/api/datasets');
+    refreshManualOptions();
     renderDatasets();
   } catch (e) {
     document.getElementById('ds-list').replaceChildren(emptyBox('数据集加载失败', e.message));
@@ -532,7 +827,7 @@ function renderDatasets() {
     var p = ds.profile || {};
     tbody.appendChild(h('tr', null,
       h('td', { text: ds.filename, style: 'max-width:220px;word-break:break-all' }),
-      h('td', null, ds.role === 'train' ? h('span', { class: 'tag green', text: '训练' }) : h('span', { class: 'tag blue', text: '测试' })),
+      h('td', null, h('span', { class: 'tag', text: ROLE_NAMES[ds.role] || ds.role })),
       h('td', { class: 'mono', text: String(p.total === undefined ? '—' : p.total) }),
       h('td', { class: 'mono', text: (p.single || 0) + ' / ' + (p.multi || 0) + ' / ' + (p.unknown || 0) }),
       h('td', { class: 'mono', text: String(p.object_count === undefined ? '—' : p.object_count) }),
@@ -558,9 +853,10 @@ function showDatasetModal(ds) {
   var content = document.getElementById('modal-content');
   clear(content);
   content.appendChild(h('h3', { text: '数据预览 · ' + ds.filename }));
+  if (ds.preview_message) content.appendChild(h('div', { class: 'banner amber', text: ds.preview_message }));
   var p = ds.profile || {};
   content.appendChild(h('div', { class: 'kv', style: 'margin-bottom:12px' },
-    kvItem('用途', ds.role === 'train' ? '训练集' : '测试集'),
+    kvItem('用途', ROLE_NAMES[ds.role] || ds.role),
     kvItem('样本数', String(p.total)),
     kvItem('单对象 / 多对象 / 无对象', (p.single || 0) + ' / ' + (p.multi || 0) + ' / ' + (p.unknown || 0)),
     kvItem('不同对象数', String(p.object_count)),
@@ -618,6 +914,8 @@ document.getElementById('up-btn').addEventListener('click', async function () {
   var fd = new FormData();
   fd.append('role', role);
   fd.append('file', fileInput.files[0]);
+  if (document.getElementById('up-task').value) fd.append('task_spec_id', document.getElementById('up-task').value);
+  fd.append('source_rule', document.getElementById('up-source').value);
   busy(btn, true, '上传中…');
   try {
     var meta = await api('/api/datasets', { method: 'POST', body: fd });
@@ -776,7 +1074,7 @@ function schedulePolling(detail) {
     if (state.pollKey !== key) return;
     try {
       var fresh = await api('/api/experiments/' + encodeURIComponent(detail.id));
-      if (state.pollKey !== key) return;
+      if (state.pollKey !== key || state.selectedExpId !== detail.id) return;
       var changed = !state.selectedExpDetail ||
         fresh.updated_at !== state.selectedExpDetail.updated_at ||
         fresh.status !== state.selectedExpDetail.status ||
@@ -795,10 +1093,17 @@ function schedulePolling(detail) {
 }
 async function refreshExpDetail() {
   if (!state.selectedExpId) return;
+  var id = state.selectedExpId;
+  var requestKey = {};
+  state.expRequestKey = requestKey;
+  schedulePolling(null);
   try {
-    state.selectedExpDetail = await api('/api/experiments/' + encodeURIComponent(state.selectedExpId));
+    var detail = await api('/api/experiments/' + encodeURIComponent(id));
+    if (state.expRequestKey !== requestKey || state.selectedExpId !== id) return;
+    state.selectedExpDetail = detail;
     renderExpDetail();
   } catch (e) {
+    if (state.expRequestKey !== requestKey || state.selectedExpId !== id) return;
     document.getElementById('exp-detail').replaceChildren(emptyBox('实验详情加载失败', e.message));
   }
 }
@@ -818,8 +1123,16 @@ function renderExpDetail() {
     statusTag(d.status)));
 
   if (d.error) panel.appendChild(h('div', { class: 'banner red', text: '错误：' + d.error }));
+  if (d.workflow_version === 2) {
+    panel.appendChild(h('div', { class: 'banner blue', text: '手动 0.8B 实验：配置不可变，校准/验证/最终测试隔离。CPU 准备检查通过不代表 GPU 或训练通过。' }));
+    panel.appendChild(h('pre', { class: 'code', text: JSON.stringify({ partitions: d.split, limits: d.limits, data_manifest_sha256: d.manifest_sha256 }, null, 2) }));
+    var trialBox = h('div'); panel.appendChild(trialBox);
+    box.appendChild(panel);
+    renderManualTrials(d, trialBox);
+    return;
+  }
   if (d.status === 'waiting_for_machine') {
-    panel.appendChild(h('div', { class: 'banner amber', text: '训练等待中：GPU 机器尚未接入。方案已就绪，接入机器后即可开始训练；平台不会模拟训练进度或结果。' }));
+    panel.appendChild(h('div', { class: 'banner amber', text: '训练等待中：GPU 机器与训练执行器尚未接入。方案已就绪，仍需完成训练集成才能训练；平台不会模拟训练进度或结果。' }));
   }
 
   var s = d.split || {};
@@ -964,16 +1277,25 @@ function refreshResultsOptions() {
 }
 async function selectResultsExp(id) {
   state.rsExpId = id || null;
+  var requestKey = {};
+  state.rsRequestKey = requestKey;
   state.rsDetail = null;
   state.rsReport = null;
   state.caseFilter = 'wrong';
   if (!id) { renderResultsBody(); return; }
+  renderResultsBody();
   try {
-    state.rsDetail = await api('/api/experiments/' + encodeURIComponent(id));
+    var detail = await api('/api/experiments/' + encodeURIComponent(id));
+    if (state.rsRequestKey !== requestKey) return;
+    var report = null;
     try {
-      state.rsReport = await api('/api/experiments/' + encodeURIComponent(id) + '/report');
-    } catch (e) { state.rsReport = null; }
+      report = await api('/api/experiments/' + encodeURIComponent(id) + '/report');
+    } catch (e) { report = null; }
+    if (state.rsRequestKey !== requestKey) return;
+    state.rsDetail = detail;
+    state.rsReport = report;
   } catch (e) {
+    if (state.rsRequestKey !== requestKey) return;
     toast(e.message, 'error');
   }
   renderResultsBody();
@@ -987,6 +1309,9 @@ function renderResultsBody() {
     return;
   }
   var sha = d.test_dataset ? d.test_dataset.sha256 : '';
+  if (d.workflow_version === 2) {
+    box.appendChild(h('div', { class: 'banner amber', text: '先在实验详情导入 validation 预测并选定 Trial，再做一次最终比较。候选预测 JSON 还必须包含 trial_id=' + (d.selected_trial_id || '尚未选定') + '。重复替换预测后，该测试版本在报告中转为回归用途。' }));
+  }
 
   /* 测试集信息与预测格式 */
   var infoPanel = h('div', { class: 'panel' });
@@ -1027,7 +1352,13 @@ function renderResultsBody() {
     var refreshBtn = h('button', { class: 'btn ghost sm' }, '刷新报告');
     refreshBtn.addEventListener('click', async function () {
       busy(refreshBtn, true, '加载…');
-      try { state.rsReport = await api('/api/experiments/' + encodeURIComponent(d.id) + '/report'); renderResultsBody(); }
+      var requestKey = state.rsRequestKey;
+      try {
+        var report = await api('/api/experiments/' + encodeURIComponent(d.id) + '/report');
+        if (state.rsRequestKey !== requestKey || state.rsExpId !== d.id) return;
+        state.rsReport = report;
+        renderResultsBody();
+      }
       catch (e) { toast(e.message, 'error'); }
       finally { busy(refreshBtn, false); }
     });
@@ -1059,7 +1390,7 @@ function importCard(expId, kind, title, imported) {
     try {
       var r = await api('/api/experiments/' + encodeURIComponent(expId) + '/predictions/' + kind, { method: 'POST', body: fd });
       toast('已导入 ' + r.imported + ' 条预测' + (r.report_ready ? '，报告已生成。' : '。'), 'success');
-      await selectResultsExp(expId);
+      if (state.rsExpId === expId) await selectResultsExp(expId);
     } catch (e) { toast(e.message, 'error'); busy(btn, false); }
   });
   card.appendChild(btn);
@@ -1075,9 +1406,16 @@ function metricRow(name, b, c, fmt) {
 function renderReport(d, report) {
   var panel = h('div', { class: 'panel' });
   panel.appendChild(h('h3', { text: '评测报告' }));
+  if (report.test_usage && report.test_usage.warning) panel.appendChild(h('div', { class: 'banner amber', text: report.test_usage.warning }));
+  if (report.paired_accuracy_uncertainty) {
+    var ci = report.paired_accuracy_uncertainty;
+    panel.appendChild(h('p', { class: 'hint', text: ci.uncertain
+      ? '配对收益不确定：独立组不足或没有观测到可估计的变化，不能据此承诺提升。独立组数：' + ci.independent_groups
+      : '配对准确率变化的 95% 组稳健正态近似区间：' + ci.interval.map(function (x) { return (x * 100).toFixed(2) + ' pp'; }).join(' ～ ') + '；依赖分组独立假设。' }));
+  }
   panel.appendChild(h('div', { class: 'banner amber' },
     h('b', { text: '重要：' }),
-    document.createTextNode('本报告完全基于用户导入的外部预测文件（source: ' + (report.source || '—') + '，training_verified: ' + String(!!report.training_verified) + '）。它不代表平台已训练、部署或验证过任何模型。')));
+    document.createTextNode('source: ' + (report.source || '—') + '，training_verified: ' + String(!!report.training_verified) + '。' + (report.source === 'authenticated_final_evaluator' && report.training_verified ? '来自独立最终评测 Worker 的冻结模型与策略；test 未用于校准。运行通过不保证业务收益。' : report.source === 'software_contract_fixture' ? '合成软件契约测试，不能作为真实模型或 GPU 效果证据。' : '基于用户导入的外部预测，不能证明平台已训练或验证模型。'))));
   if (!report.performance_comparable) {
     var issues = report.comparability_issues || [];
     panel.appendChild(h('div', { class: 'banner blue' },
@@ -1087,6 +1425,10 @@ function renderReport(d, report) {
         : '两侧 runtime（device/backend/dtype）不一致或缺失，和/或部分样本缺少 latency_ms 计时（覆盖不完整），耗时数据不具备严格可比性；准确率等集合指标仍然有效。')));
   }
   var b = report.baseline, c = report.candidate;
+  var bc = b.overall.probability_calibration, cc = c.overall.probability_calibration;
+  if (bc && cc) {
+    panel.appendChild(h('p', { class: 'hint', text: '全 50 对象概率覆盖：原模型 ' + bc.coverage + '/' + bc.total + '，候选 ' + cc.coverage + '/' + cc.total + '。Brier：' + num(bc.brier_score) + ' / ' + num(cc.brier_score) + '；ECE（10 bins）：' + num(bc.ece) + ' / ' + num(cc.ece) + '。未提供完整原始概率时不可计算，不代表已做校准。' }));
+  }
 
   /* 顶部卡片 */
   var delta = report.accuracy_delta;
@@ -1189,10 +1531,10 @@ function renderReport(d, report) {
   }
   /* 逐对象指标 */
   panel.appendChild(h('div', { class: 'section-title', text: '逐对象指标（precision / recall / F1）' }));
-  var bObj = {}, cObj = {};
+  var bObj = Object.create(null), cObj = Object.create(null);
   (b.overall.per_object || []).forEach(function (o) { bObj[o.object] = o; });
   (c.overall.per_object || []).forEach(function (o) { cObj[o.object] = o; });
-  var objs = Object.keys(Object.assign({}, bObj, cObj)).sort();
+  var objs = Array.from(new Set(Object.keys(bObj).concat(Object.keys(cObj)))).sort();
   if (!objs.length) {
     panel.appendChild(h('p', { class: 'hint', text: '数据中没有出现任何对象标签。' }));
   } else {
@@ -1219,7 +1561,7 @@ function renderReport(d, report) {
 
   /* 错例表 */
   panel.appendChild(h('div', { class: 'section-title', text: '用例明细与错例筛选' }));
-  var bCases = {}, cCases = {};
+  var bCases = Object.create(null), cCases = Object.create(null);
   (b.cases || []).forEach(function (r) { bCases[r.id] = r; });
   (c.cases || []).forEach(function (r) { cCases[r.id] = r; });
   var improved = new Set(report.improved_ids || []);
@@ -1303,6 +1645,7 @@ function deltaTag(x) {
 /* ================= 初始化 ================= */
 (async function init() {
   loadHealth();
+  loadTasks();
   await loadModels();
   await loadDatasets();
   refreshCreateOptions();

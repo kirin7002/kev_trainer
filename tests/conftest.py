@@ -17,6 +17,11 @@ _IMPORT_STATE = tempfile.mkdtemp(prefix='kev-import-state-')
 os.environ['KEV_TRAINER_DATA'] = _IMPORT_STATE
 os.environ['CLAUDE_BIN'] = str(ROOT / 'tests' / 'definitely-not-a-claude-binary')
 os.environ.pop('CLAUDE_MODEL', None)
+for _name in ('KEV_ENABLE_GPU_EXECUTION', 'KEV_WORKER_TOKEN', 'KEV_EVALUATOR_TOKEN',
+              'KEV_ENABLE_CLAUDE_PLANNING', 'KEV_CLAUDE_EXPECTED_VERSION',
+              'ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'OPENAI_API_KEY',
+              'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN'):
+    os.environ.pop(_name, None)
 
 import pytest
 from fastapi.testclient import TestClient

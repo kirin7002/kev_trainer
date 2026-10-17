@@ -1,0 +1,207 @@
+{
+  "verified_at_utc_date": "2026-10-16",
+  "repository": "https://github.com/jaredpalmer/kev",
+  "commit": {
+    "sha": "85ccf56a0afb952323c621055b02876e8498d60c",
+    "tree": "818dcca022d4c03ccc03f955131dcd8a0d99c763",
+    "url": "https://github.com/jaredpalmer/kev/commit/85ccf56a0afb952323c621055b02876e8498d60c",
+    "date": "2026-10-12T14:14:04Z"
+  },
+  "selected_files": [
+    {
+      "path": "kev/train.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/train.py",
+      "git_blob_sha": "15c8cdefc888fbd19c2bb579d910090f9ce8442a",
+      "sha256": "73b76371a002d04c98b3ff80f493615f9518990ba2d39cfdb55c3095d6a17731",
+      "bytes": 53761,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/benchmark.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/benchmark.py",
+      "git_blob_sha": "c236c2cb8d8dbc136a6e1fd7369f58715c15a6e3",
+      "sha256": "ff81e91b4db58d58081384018d1b2388c98ef71078591fd06f6ac257f7a3fc3a",
+      "bytes": 14563,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/calibrate.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/calibrate.py",
+      "git_blob_sha": "fc8dcee8c7926125d28c950390aae6a61188e7c5",
+      "sha256": "435ac98696fbd329c3a07f0c12633ba3c09a846f0e9c92e17540bbf8ba2986f8",
+      "bytes": 4846,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/checkpoint.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/checkpoint.py",
+      "git_blob_sha": "272462473b5c9dddfeae25499efea319c831fa19",
+      "sha256": "02062399977ee0da316dd52e03a79fa5e10134aa49c0b5ed801598c52042dc32",
+      "bytes": 23232,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/data.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/data.py",
+      "git_blob_sha": "a81ea0e2d40059ba304778c33d9eca5ec3178a11",
+      "sha256": "e77a2fffeb8ee7e05b118893be8e38b8358aef97c3ca2e143cdce208201b92f9",
+      "bytes": 25861,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/api.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/api.py",
+      "git_blob_sha": "0096b136e3fad80ce7c25a5dfec33644990d7aca",
+      "sha256": "a6f53af5354f8ea17915abc78360fdf291a5108ce39a53a2d9135d48c603ae58",
+      "bytes": 7526,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "scripts/calibrate_checkpoint.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/scripts/calibrate_checkpoint.py",
+      "git_blob_sha": "b626bbd92ad6c35ea11e9c217a3ea981188d83a8",
+      "sha256": "43888626075ed60419902770d41d116a0acbbcf317e8a4b6cda10bd42c220938",
+      "bytes": 12299,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/model.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/model.py",
+      "git_blob_sha": "1fffa118c8dbac8b3c6c1d2be39d6cd6ce8e9326",
+      "sha256": "2ff3b2e67c048e3bc5a0d1a32aafe50804ed315a5564fce06bb4b95697c5271c",
+      "bytes": 35153,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/metrics.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/metrics.py",
+      "git_blob_sha": "6c5aacf46aa8e43c0666b47d51e940058771da09",
+      "sha256": "167a586334cfcced4adcc197758535c3bcda832b855c151095ef2d1968cf8983",
+      "bytes": 24401,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/predictors.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/predictors.py",
+      "git_blob_sha": "0d01683bb92b8c673501fc7d9dd3077433ecbf34",
+      "sha256": "29263ae3297e5cde6cf03da5c5aa3ed377c9681c6a5a639ea4aa259acec7575b",
+      "bytes": 21963,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "kev/suite.py",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/kev/suite.py",
+      "git_blob_sha": "2a49b69630186c1ef652e4ce52c27c9348a8dec2",
+      "sha256": "8e7d257a10b4704d7bf4f8ec2c74dddf26aa5a2a610ea78610360e6baf43eff5",
+      "bytes": 26388,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "uv.lock",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/uv.lock",
+      "git_blob_sha": "e4dacc257320a1c891ad481fc0dde6fcb2af51c7",
+      "sha256": "a9922dbb89acdef78299fd2b4a8c3f7f0fa1b2bc08b55595b6926fa785a9c466",
+      "bytes": 335387,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "README.md",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/README.md",
+      "git_blob_sha": "db45dd5e4e9c5d6f51b3be9d9605f92dd1cf9b77",
+      "sha256": "d40b16ba90709c043b3778afc82786f847713578cd309f7c062d2ed5d44ae495",
+      "bytes": 43914,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "docs/model-cards/kev-0.8b.md",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/docs/model-cards/kev-0.8b.md",
+      "git_blob_sha": "fe70d102ac32ad5867059d932f6314696aa8ac80",
+      "sha256": "96df0121af5e6097916920c1c3a119600cddfe0af8cd0d90b2f16de7d1f2e185",
+      "bytes": 24767,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    },
+    {
+      "path": "runs/release/kev-1.0-verify/tar-0.8b/report.json",
+      "url": "https://github.com/jaredpalmer/kev/blob/85ccf56a0afb952323c621055b02876e8498d60c/runs/release/kev-1.0-verify/tar-0.8b/report.json",
+      "git_blob_sha": "a0f7b816cb05ef34060289d0da48d2155ad400e5",
+      "sha256": "67dc3770914d079ba6c7255dcb1212276a0f2530523d0bb77066a00f6aef3d94",
+      "bytes": 6438,
+      "evidence": "downloaded_selected_file_bytes_checked_against_commit_tree",
+      "runtime_executed": false
+    }
+  ],
+  "dependency_pins": {
+    "accelerate": [
+      "1.15.0"
+    ],
+    "datasets": [
+      "5.0.1"
+    ],
+    "numpy": [
+      "2.5.3"
+    ],
+    "peft": [
+      "0.21.0"
+    ],
+    "pydantic": [
+      "2.13.5"
+    ],
+    "scikit-learn": [
+      "1.9.1"
+    ],
+    "torch": [
+      "2.8.0"
+    ],
+    "transformers": [
+      "5.17.0"
+    ]
+  },
+  "dependency_status": "read_from_verified_lock_not_installed_or_import_tested",
+  "base_revision": {
+    "value": "dc7cdfe2ee4154fa7e30f5b51ca41bfa40174e68",
+    "source": "README.md at fixed commit, line 335",
+    "status": "publisher_source_declaration_only_not_weight_verified",
+    "huggingface_api_check": "blocked_by_403_tunnel_and_web_open_unavailable"
+  },
+  "checkpoint_alias": {
+    "value": "jaredpalmer/kev-0.8b@v1.0",
+    "source": "docs/model-cards/kev-0.8b.md at fixed commit",
+    "status": "publisher_documented_alias_not_independently_resolved_to_hub_commit"
+  },
+  "archive": {
+    "url": "https://github.com/jaredpalmer/kev/releases/download/kev-1.0/kev-0.8b.tar.gz",
+    "asset_id": 603844150,
+    "bytes": 45813161,
+    "sha256": "0ae144c7675f0c3f333be0bb878a0f202ab9e6fa84169fb7cb16efe6176c1ef1",
+    "metadata_url": "https://api.github.com/repos/jaredpalmer/kev/releases/tags/kev-1.0",
+    "published_at": "2026-10-01T17:25:27Z",
+    "status": "github_release_asset_metadata_digest_only",
+    "downloaded": false,
+    "independently_hashed_archive": false
+  },
+  "resume": {
+    "path": "kev/train.py",
+    "lines": [
+      472,
+      473
+    ],
+    "status": "lora_optimizer_resume_explicitly_rejected_by_pinned_source_full_ft_only",
+    "platform_action": "reject_resume_new_attempt_from_fixed_parent"
+  },
+  "weights_downloaded": false,
+  "gpu_runtime_verified": false
+}

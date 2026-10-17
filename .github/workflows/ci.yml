@@ -1,0 +1,33 @@
+name: Verify Kev Trainer
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements-lock.txt
+          .venv/bin/python -m pip check
+      - name: Backend and isolated process integration tests
+        run: .venv/bin/python -m pytest -q
+      - name: Frontend behavior and inline JavaScript syntax
+        run: node --test tests/frontend.test.cjs
+      - name: Launcher syntax
+        run: bash -n scripts/start.sh scripts/stop.sh

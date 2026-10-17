@@ -59,7 +59,7 @@ class MachineClient(Protocol):
 class UnconfiguredMachineClient:
     """Offline placeholder: never invent jobs, logs, metrics or model files."""
 
-    message = "GPU Linux 机器尚未接入；可以准备数据和方案，接入后才能训练。"
+    message = "旧方案执行入口未接入 GPU；请在手动 Trial 中使用显式配置的拉取 Worker。当前可准备数据、方案与外部预测评测。"
 
     def check_connection(self) -> ConnectionStatus:
         return ConnectionStatus(connected=False, message=self.message)

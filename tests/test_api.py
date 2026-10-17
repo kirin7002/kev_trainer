@@ -35,7 +35,7 @@ def test_upload_train_and_test_and_list(client, upload):
 
 
 def test_upload_rejects_bad_role(client, upload):
-    response = upload('validation', TRAIN_ROWS)
+    response = upload('invalid-role', TRAIN_ROWS)
     assert response.status_code == 400
     assert 'train' in response.json()['detail']
 

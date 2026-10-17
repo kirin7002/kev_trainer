@@ -11,6 +11,7 @@ import threading
 import time
 
 from jsonschema import Draft202012Validator
+from datasets import DataError, parse_json
 
 
 PLAN_SCHEMA = {
@@ -63,7 +64,7 @@ def binary_path():
 
 
 def redact(text):
-    for name in ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'OPENAI_API_KEY'):
+    for name in ('ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN', 'OPENAI_API_KEY', 'KEV_WORKER_TOKEN', 'KEV_EVALUATOR_TOKEN'):
         value = os.environ.get(name)
         if value:
             text = text.replace(value, '[REDACTED]')
@@ -71,14 +72,28 @@ def redact(text):
 
 
 def stop_process(process):
-    if process.poll() is not None:
-        return
     if os.name == 'posix':
+        # The CLI leader may have exited while descendants still hold the
+        # stdout pipe. Its private session remains ours to clean up.
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
-            pass
-    else:
+            process.wait(timeout=5)
+            return
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline:
+            process.poll()  # reap the leader so an empty group disappears
+            try:
+                os.killpg(process.pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(.02)
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+    elif process.poll() is None:
         process.terminate()
     try:
         process.wait(timeout=5)
@@ -96,14 +111,15 @@ def stop_process(process):
             pass
 
 
-def generate_plan(context, workdir, budget, cancel, emit):
+def generate_plan(context, workdir, budget, cancel, emit, *, schema=None, system_prompt=None, require_bare=False):
+    schema = schema or PLAN_SCHEMA
     binary = binary_path()
     if not binary:
         raise PlanningError('未找到 Claude Code。请安装并登录，或设置 CLAUDE_BIN。')
     # Keep the user setting source so subscription (OAuth) login from the
     # official CLI is preserved; project/local sources stay disabled.
     args = [binary, '-p', '--output-format', 'stream-json', '--verbose',
-        '--json-schema', json.dumps(PLAN_SCHEMA), '--system-prompt', SYSTEM_PROMPT,
+        '--json-schema', json.dumps(schema), '--system-prompt', system_prompt or SYSTEM_PROMPT,
         '--tools', '', '--permission-mode', 'dontAsk', '--disable-slash-commands',
         '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
         '--setting-sources', 'user',
@@ -116,9 +132,13 @@ def generate_plan(context, workdir, budget, cancel, emit):
         args.extend(['--model', os.environ['CLAUDE_MODEL']])
     # API credentials support bare mode. Subscription authentication stays in the
     # official CLI/keychain; its settings, tools and MCP discovery remain disabled.
-    if os.environ.get('ANTHROPIC_API_KEY'):
+    if require_bare and not os.environ.get('ANTHROPIC_API_KEY'):
+        raise PlanningError('第二阶段 bare 调用需要运行者已有 API 环境认证；不会创建或迁移凭据。')
+    if require_bare or os.environ.get('ANTHROPIC_API_KEY'):
         args.append('--bare')
     environment = dict(os.environ)
+    for name in ('KEV_WORKER_TOKEN', 'KEV_EVALUATOR_TOKEN', 'OPENAI_API_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN'):
+        environment.pop(name, None)
     environment.pop('CLAUDECODE', None)
     # 禁止本次子进程加载 CLAUDE.md / 自动记忆（官方支持的环境变量），保留 OAuth 认证。
     environment['CLAUDE_CODE_DISABLE_CLAUDE_MDS'] = '1'
@@ -132,24 +152,29 @@ def generate_plan(context, workdir, budget, cancel, emit):
     process = subprocess.Popen(args, cwd=workdir, env=environment, stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8',
         errors='replace', start_new_session=(os.name == 'posix'))
-    lines = queue.Queue(maxsize=500)
+    lines = queue.Queue(maxsize=8)
     stopping = threading.Event()
+    def enqueue(line):
+        while not stopping.is_set():
+            try:
+                lines.put(line, timeout=.2)
+                return
+            except queue.Full:
+                continue
+
     def reader():
         try:
-            for line in process.stdout:
-                while not stopping.is_set():
-                    try:
-                        lines.put(line, timeout=.2)
-                        break
-                    except queue.Full:
-                        continue
+            while not stopping.is_set():
+                line = process.stdout.readline(256_001)
+                if not line:
+                    break
+                enqueue(line)
+                if len(line) > 256_000:
+                    break
         except (ValueError, OSError):
             pass
         finally:
-            try:
-                lines.put(None, timeout=.2)
-            except queue.Full:
-                pass
+            enqueue(None)
     payload = json.dumps(context, ensure_ascii=False)
     def writer():
         # stdin 发送放在后台线程：对端不读取时 write 会阻塞在管道缓冲区上，
@@ -182,29 +207,41 @@ def generate_plan(context, workdir, budget, cancel, emit):
             if line is None:
                 break
             output_size += len(line)
-            if output_size > 2_000_000:
+            if output_size > 2_000_000 or len(line) > 256_000:
                 raise PlanningError('Claude 输出超过限制，已停止本次调用。')
             clean = redact(line.strip())
             if not clean:
                 continue
             try:
-                event = json.loads(clean)
-            except json.JSONDecodeError:
+                event = parse_json(clean)
+            except DataError:
                 tail.append(clean[:1000])
                 tail = tail[-5:]
                 emit(clean[:1000])
                 continue
+            if not isinstance(event, dict):
+                raise PlanningError('Claude 输出协议无效：事件必须是 JSON 对象。')
             if event.get('type') == 'system' and event.get('subtype') == 'init':
                 emit('Claude Code 已启动 · ' + str(event.get('model', '默认模型')))
             elif event.get('type') == 'assistant':
-                for part in event.get('message', {}).get('content', []):
+                message = event.get('message')
+                if not isinstance(message, dict) or not isinstance(message.get('content'), list):
+                    raise PlanningError('Claude 输出协议无效：assistant 消息格式错误。')
+                for part in message['content']:
+                    if not isinstance(part, dict):
+                        raise PlanningError('Claude 输出协议无效：消息内容格式错误。')
                     if part.get('type') == 'text':
                         emit(str(part.get('text', ''))[:1800])
             elif event.get('type') == 'result':
                 final = event
             elif event.get('subtype') == 'api_retry':
                 emit('Claude 请求重试：' + str(event.get('error', '网络错误')))
-        process.wait(timeout=5)
+        while process.poll() is None:
+            if cancel.is_set():
+                raise PlanningCancelled('方案生成已取消。')
+            if time.monotonic() > deadline:
+                raise PlanningError('Claude Code 调用超时，已停止进程。可检查认证和网络后重试。')
+            time.sleep(.02)
         if cancel.is_set():
             raise PlanningCancelled('方案生成已取消。')
         if process.returncode or not final or final.get('is_error'):
@@ -213,10 +250,10 @@ def generate_plan(context, workdir, budget, cancel, emit):
         plan = final.get('structured_output')
         if plan is None:
             try:
-                plan = json.loads(final.get('result', ''))
-            except (json.JSONDecodeError, TypeError):
+                plan = parse_json(final.get('result', ''))
+            except (DataError, TypeError):
                 raise PlanningError('Claude 未返回结构化方案，请重试。')
-        errors = list(Draft202012Validator(PLAN_SCHEMA).iter_errors(plan))
+        errors = list(Draft202012Validator(schema).iter_errors(plan))
         if errors:
             raise PlanningError('Claude 返回的方案未通过结构或参数范围校验。')
         return {'plan': plan, 'session_id': final.get('session_id'),

@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/jaredpalmer/kev",
+  "commit": "85ccf56a0afb952323c621055b02876e8498d60c",
+  "files": {
+    "kev/train.py": {
+      "git_blob_sha": "15c8cdefc888fbd19c2bb579d910090f9ce8442a",
+      "sha256": "73b76371a002d04c98b3ff80f493615f9518990ba2d39cfdb55c3095d6a17731",
+      "bytes": 53761
+    },
+    "kev/benchmark.py": {
+      "git_blob_sha": "c236c2cb8d8dbc136a6e1fd7369f58715c15a6e3",
+      "sha256": "ff81e91b4db58d58081384018d1b2388c98ef71078591fd06f6ac257f7a3fc3a",
+      "bytes": 14563
+    },
+    "kev/calibrate.py": {
+      "git_blob_sha": "fc8dcee8c7926125d28c950390aae6a61188e7c5",
+      "sha256": "435ac98696fbd329c3a07f0c12633ba3c09a846f0e9c92e17540bbf8ba2986f8",
+      "bytes": 4846
+    },
+    "kev/checkpoint.py": {
+      "git_blob_sha": "272462473b5c9dddfeae25499efea319c831fa19",
+      "sha256": "02062399977ee0da316dd52e03a79fa5e10134aa49c0b5ed801598c52042dc32",
+      "bytes": 23232
+    },
+    "kev/data.py": {
+      "git_blob_sha": "a81ea0e2d40059ba304778c33d9eca5ec3178a11",
+      "sha256": "e77a2fffeb8ee7e05b118893be8e38b8358aef97c3ca2e143cdce208201b92f9",
+      "bytes": 25861
+    },
+    "kev/api.py": {
+      "git_blob_sha": "0096b136e3fad80ce7c25a5dfec33644990d7aca",
+      "sha256": "a6f53af5354f8ea17915abc78360fdf291a5108ce39a53a2d9135d48c603ae58",
+      "bytes": 7526
+    },
+    "scripts/calibrate_checkpoint.py": {
+      "git_blob_sha": "b626bbd92ad6c35ea11e9c217a3ea981188d83a8",
+      "sha256": "43888626075ed60419902770d41d116a0acbbcf317e8a4b6cda10bd42c220938",
+      "bytes": 12299
+    },
+    "kev/model.py": {
+      "git_blob_sha": "1fffa118c8dbac8b3c6c1d2be39d6cd6ce8e9326",
+      "sha256": "2ff3b2e67c048e3bc5a0d1a32aafe50804ed315a5564fce06bb4b95697c5271c",
+      "bytes": 35153
+    },
+    "kev/metrics.py": {
+      "git_blob_sha": "6c5aacf46aa8e43c0666b47d51e940058771da09",
+      "sha256": "167a586334cfcced4adcc197758535c3bcda832b855c151095ef2d1968cf8983",
+      "bytes": 24401
+    },
+    "kev/predictors.py": {
+      "git_blob_sha": "0d01683bb92b8c673501fc7d9dd3077433ecbf34",
+      "sha256": "29263ae3297e5cde6cf03da5c5aa3ed377c9681c6a5a639ea4aa259acec7575b",
+      "bytes": 21963
+    },
+    "kev/suite.py": {
+      "git_blob_sha": "2a49b69630186c1ef652e4ce52c27c9348a8dec2",
+      "sha256": "8e7d257a10b4704d7bf4f8ec2c74dddf26aa5a2a610ea78610360e6baf43eff5",
+      "bytes": 26388
+    },
+    "uv.lock": {
+      "git_blob_sha": "e4dacc257320a1c891ad481fc0dde6fcb2af51c7",
+      "sha256": "a9922dbb89acdef78299fd2b4a8c3f7f0fa1b2bc08b55595b6926fa785a9c466",
+      "bytes": 335387
+    }
+  },
+  "verification": "source_read_only_not_runtime",
+  "verified_cli_modules": [
+    "kev.train",
+    "kev.benchmark",
+    "kev.calibrate"
+  ],
+  "calibration_writer": "scripts/calibrate_checkpoint.py",
+  "supported_training_dtypes": [
+    "bf16",
+    "fp32"
+  ],
+  "lora_resume_supported": false,
+  "train_flags": [
+    "--accum",
+    "--anchor",
+    "--anchor_sources",
+    "--anchor_w",
+    "--base",
+    "--base_revision",
+    "--batch",
+    "--brier_w",
+    "--checkpointing",
+    "--data",
+    "--device",
+    "--dtype",
+    "--epochs",
+    "--focal_gamma",
+    "--full_ft",
+    "--head_dim",
+    "--head_lr",
+    "--holdout",
+    "--init_from",
+    "--label_smoothing",
+    "--length_sort",
+    "--lora",
+    "--lora_targets",
+    "--lr",
+    "--max_state",
+    "--max_steps",
+    "--n_per_source",
+    "--none_pair_max_state",
+    "--option_isolation",
+    "--ord_w",
+    "--out",
+    "--p_distract",
+    "--p_none",
+    "--p_none_distract",
+    "--p_none_pair",
+    "--pass_tokens_max",
+    "--perm_frac",
+    "--perm_kl",
+    "--public_frac",
+    "--replay",
+    "--resume",
+    "--row_budget",
+    "--save_every_minutes",
+    "--save_every_steps",
+    "--seed",
+    "--shared_prefix",
+    "--snapshot_dir",
+    "--snapshot_every_steps",
+    "--snapshot_fractions",
+    "--special_embeddings",
+    "--stop_after",
+    "--suite",
+    "--synthetic_repeat",
+    "--train_sources",
+    "--weight_decay",
+    "--weights_dtype"
+  ],
+  "benchmark_flags": [
+    "--allow-test",
+    "--data",
+    "--date_facts",
+    "--device",
+    "--out",
+    "--remote",
+    "--remote-concurrency",
+    "--remote-model",
+    "--rotations",
+    "--run",
+    "--split",
+    "--suite"
+  ],
+  "released_checkpoint": {
+    "filename": "kev-0.8b.tar.gz",
+    "sha256": "0ae144c7675f0c3f333be0bb878a0f202ab9e6fa84169fb7cb16efe6176c1ef1",
+    "bytes": 45813161,
+    "url": "https://github.com/jaredpalmer/kev/releases/download/kev-1.0/kev-0.8b.tar.gz",
+    "metadata_source": "https://api.github.com/repos/jaredpalmer/kev/releases/tags/kev-1.0",
+    "verification": "publisher_release_api_metadata_digest_only",
+    "downloaded_in_development": false,
+    "independently_hashed_archive": false
+  },
+  "runtime_dependency_pins": {
+    "accelerate": [
+      "1.15.0"
+    ],
+    "datasets": [
+      "5.0.1"
+    ],
+    "numpy": [
+      "2.5.3"
+    ],
+    "peft": [
+      "0.21.0"
+    ],
+    "pydantic": [
+      "2.13.5"
+    ],
+    "scikit-learn": [
+      "1.9.1"
+    ],
+    "torch": [
+      "2.8.0"
+    ],
+    "transformers": [
+      "5.17.0"
+    ]
+  },
+  "provenance_evidence": "docs/UPSTREAM_EVIDENCE.json"
+}
