@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,7 +23,9 @@ def isolated_launcher(tmp_path):
     return script
 
 
-def test_launch_duplicate_guard_stop_and_pid_cleanup(tmp_path):
+@pytest.mark.parametrize('columns', ['70', '4096'])
+def test_launch_duplicate_guard_stop_and_pid_cleanup(tmp_path, monkeypatch, columns):
+    monkeypatch.setenv('COLUMNS', columns)
     script = isolated_launcher(tmp_path)
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))

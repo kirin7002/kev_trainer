@@ -16,7 +16,9 @@ LOCK = RUN / 'server.lock'
 
 
 def process_identity(pid):
-    info = subprocess.run(['ps', '-p', str(pid), '-o', 'lstart=', '-o', 'args='],
+    # CI and terminals can set a narrow COLUMNS value. A truncated argv cannot
+    # prove this launcher's path; request the full command before comparing it.
+    info = subprocess.run(['ps', '-ww', '-p', str(pid), '-o', 'lstart=', '-o', 'args='],
                           capture_output=True, text=True, check=False)
     return info.stdout.strip()
 

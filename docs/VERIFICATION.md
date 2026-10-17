@@ -1,5 +1,14 @@
 # 验证记录
 
+## 2026-10-17：main 发布复验与窄终端停止回归
+
+完整实现以 ab94c7abe811c48ad664583987bb1d9315573d84 推送 main，Git 远端完整 SHA 核对一致；未强推、部署或启动 GPU。此前未提交/未推送章节保留为历史证据。
+
+首次 GitHub Actions 安装锁定依赖通过，后端 320 passed/1 failed：[运行记录](https://github.com/kirin7002/kev_trainer/actions/runs/38994788721)。失败为 tests/test_server.py 的停止归属核验。以 COLUMNS=70 本地复现后，增加 ps -ww 防止长脚本路径被截断；继续校验原 PID 身份与脚本路径，不停止无关进程。窄/宽列和无关进程三个定向回归通过。修复后全量本地 322 passed（50.04s）、前端 5 passed；远端 CI 结果以 Actions 为准，不把本地通过冒充远端通过。
+
+实际 Chromium 再次通过 1440/390px、JS 错误 0；新增桌面主页和手动流程截图在 /workspace/scratch/kev-trainer-user-ui/，示例数据、未接入 GPU，未发布站点。截图经人工视觉检查没有凭据/个人信息，Library 上传受工具服务网络阻断，没有生成 Library ID。
+
+
 ## 最新：独立基线、镜像来源和证据分级（2026-10-16 UTC）
 
 - `.venv/bin/python -m pytest -q`：**321 passed、0 failed、0 skipped，50.28s**。新增 18 项 baseline/image/resume 回归，首轮有一处测试括号语法错误已修正后运行通过；其余 303 项保留。
