@@ -1,5 +1,13 @@
 # 验证记录
 
+## 2026-10-18：业务任务整合与使用指南
+
+以最新 main `0e055e8` 为基线，业务任务整合提交 `902e591` 已快进推送 main。最终 `.venv/bin/python -m pytest -q`：349 passed、1 项现有 Starlette/httpx 弃用警告，耗时 57.35 秒；`node tests/frontend.test.cjs`：6 passed。`git diff --check` 与启动/停止脚本语法检查通过。
+
+Chromium 153 在 1440/390px 通过完整合成流程：7 问、固定 car 业务、明确问题模式、CPU 准备、validation 选择、方案批准/关闭 GPU 时的操作和最终外部报告下载；没有 JS 错误。临时截图不提交，合成结果均非真实训练。另覆盖 1/7/51/100 问合成执行契约及全目录 loader canary。新增 [USER_GUIDE.md](USER_GUIDE.md)，其 JSON 示例经解析、任务转换及文档链接检查；最后的页面文案对齐后前端 6 项再通过。
+
+未做真实 GPU、Torch/Kev 训练环境、权重下载、真实模型/业务效果或付费 Claude 验收。工作区通过不代表远端 CI、环境发布或新任务恢复验收；不扩大网络/认证权限，不上传真实数据或凭据。
+
 ## 2026-10-17：main 发布复验与窄终端停止回归
 
 完整实现以 ab94c7abe811c48ad664583987bb1d9315573d84 推送 main，Git 远端完整 SHA 核对一致；未强推、部署或启动 GPU。此前未提交/未推送章节保留为历史证据。
