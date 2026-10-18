@@ -38,7 +38,7 @@ def validate_baseline_bundle(directory,manifest,job,inputs,allow_fixture=False):
     if real and (runtime.get('runtime_verified') is not True or runtime.get('execution_backend')!='cuda'):
         raise DataError('基线 CUDA 未验证。')
     loader=read(root/'reports/BASELINE_LOADING.json')
-    if (not loader.get('loader_verified') or loader.get('objects_verified')!=50
+    if (not loader.get('loader_verified') or loader.get('objects_verified')!=len(inputs['objects'])
             or loader.get('head_sha256')!=file_sha(root/'checkpoint/head.pt')
             or loader.get('weights_sha256')!=file_sha(root/'checkpoint/adapter_model.safetensors')):
         raise DataError('基线 loader/模型字节不一致。')
@@ -56,7 +56,8 @@ def validate_baseline_bundle(directory,manifest,job,inputs,allow_fixture=False):
             or policy.get('rows_sha256')!=file_sha(root/'reports/benchmark-BASELINE_CALIBRATION/rows.json')):
         raise DataError('基线校准策略不完整或来源不一致。')
     for role,key in (('calibration','data_sha256'),('validation','validation_sha256')):
-        raw=''.join(json.dumps(row,ensure_ascii=False)+'\n' for row in system_one(inputs['partitions'][role],{'objects':inputs['objects']},role)).encode()
+        raw=''.join(json.dumps(row,ensure_ascii=False)+'\n' for row in system_one(
+            inputs['partitions'][role],{'objects':inputs['objects'], **inputs['config'].get('task_policy', {})},role)).encode()
         if policy.get(key)!=hashlib.sha256(raw).hexdigest(): raise DataError('基线校准分区 SHA 不匹配。')
     calibration_rows(read(root/'reports/benchmark-BASELINE_CALIBRATION/rows.json'),inputs['partitions']['calibration'],objects)
     normalized_report(root,'BASELINE_CALIBRATION',inputs['partitions']['calibration'],objects,inputs['partition_sha256']['calibration'])

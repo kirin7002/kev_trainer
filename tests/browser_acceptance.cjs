@@ -9,6 +9,11 @@ const { spawn, spawnSync } = require('node:child_process');
 const { chromium } = require('playwright');
 
 async function main() {
+  const questionCount = Number(process.env.KEV_BROWSER_QUESTION_COUNT || 50);
+  const businessScope = process.env.KEV_BROWSER_BUSINESS_SCOPE || '';
+  const explicitQuestions = process.env.KEV_BROWSER_LABEL_MODE === 'explicit_questions';
+  assert.ok(Number.isInteger(questionCount) && questionCount >= 1 && questionCount <= 100);
+  const intents = row => row.intents || Object.keys(row.questions).filter(key => row.questions[key].label);
   const root = path.resolve(__dirname, '..');
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'kev-browser-'));
   const project = path.join(temporary, 'project'); fs.mkdirSync(project);
@@ -45,15 +50,24 @@ async function main() {
     await page.locator('#modal-back.open').waitFor();
     await page.locator('#modal-close').click();
 
-    const objects = Array.from({ length: 50 }, (_, i) => ({ id: 'object-' + String(i).padStart(2, '0'),
+    const objects = Array.from({ length: questionCount }, (_, i) => ({ id: 'object-' + String(i).padStart(2, '0'),
       instructions: 'Synthetic browser object ' + i, criteria: { true: 'fixture yes', false: 'fixture no' } }));
+    if (businessScope) await page.locator('#task-scope').fill(businessScope);
+    if (explicitQuestions) await page.locator('#task-label-mode').selectOption('explicit_questions');
     await page.locator('#task-file').setInputFiles({ name: 'fixture-task.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ name: '浏览器合成任务（非真实目录）', objects })) });
     await page.locator('#task-upload').click();
     await page.waitForFunction(() => document.getElementById('up-task').value !== '');
     const versions = {}, rows = {};
     for (const role of ['train', 'calibration', 'validation', 'test', 'regression']) {
-      rows[role] = [0, 1].map(i => ({ id: 'browser-' + role + i, text: 'browser fixture ' + role + i,
-        intents: i === 0 ? ['object-00'] : [], group_id: role + '-group-' + i }));
+      rows[role] = [0, 1].map(i => {
+        const row = { id: 'browser-' + role + i, text: 'browser fixture ' + role + i,
+          intents: i === 0 ? ['object-00'] : [], group_id: role + '-group-' + i };
+        if (explicitQuestions) {
+          row.questions = { [objects[i === 0 ? 0 : objects.length-1].id]: { type: 'noul', label: i === 0 } };
+          delete row.intents;
+        }
+        return row;
+      });
       await page.locator('#up-role').selectOption(role);
       await page.locator('#up-source').fill('Synthetic browser fixture; no real training data');
       await page.locator('#up-file').setInputFiles({ name: role + '-fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(rows[role])) });
@@ -83,11 +97,13 @@ async function main() {
     const result = JSON.parse(worker.stdout.trim().split('\n').at(-1)); assert.equal(result.training_verified, false); assert.equal(result.state, 'SUCCEEDED');
     await page.getByRole('button', { name: '刷新准备检查状态', exact: true }).click();
     await page.locator('[data-job-state=SUCCEEDED]').waitFor();
-    const validation = { dataset_sha256: versions.validation.sha256, predictions: rows.validation.map(row => ({ id: row.id, intents: row.intents })) };
+    const validation = { dataset_sha256: versions.validation.sha256, predictions: rows.validation.map(row => ({ id: row.id, intents: intents(row) })) };
     await page.locator('#exp-detail input[type=file]').setInputFiles({ name: 'validation-fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(validation)) });
     await page.getByRole('button', { name: '导入 validation 预测', exact: true }).click();
     await page.getByRole('button', { name: '按 validation 选定此候选', exact: true }).click();
     await page.getByRole('button', { name: '已选候选', exact: true }).waitFor();
+    if (businessScope) await page.getByText('按业务场景验收', { exact: true }).waitFor();
+    if (explicitQuestions) assert.match(await page.locator('#exp-detail').innerText(), /未询问问题/);
     await page.waitForFunction(() => document.getElementById('toasts').children.length === 0);
     await page.screenshot({ path: path.join(output, 'manual-desktop.png'), fullPage: true });
 
@@ -125,8 +141,9 @@ async function main() {
     await page.locator('#rs-body input[type=file]').first().waitFor();
     for (const [index, side] of ['baseline', 'candidate'].entries()) {
       const payload = { dataset_sha256: versions.test.sha256, trial_id: trial.id, model: 'browser-fixture-' + side,
-        predictions: rows.test.map(row => ({ id: row.id, intents: side === 'candidate' ? row.intents : [],
-          probabilities: Object.fromEntries(objects.map(obj => [obj.id, side === 'candidate' && row.intents.includes(obj.id) ? 1 : 0])) })) };
+        predictions: rows.test.map(row => ({ id: row.id, intents: side === 'candidate' ? intents(row) : [],
+          probabilities: Object.fromEntries((row.questions ? Object.keys(row.questions) : objects.map(obj => obj.id))
+            .map(key => [key, side === 'candidate' && intents(row).includes(key) ? 1 : 0])) })) };
       const input = page.locator('#rs-body input[type=file]').nth(index);
       await input.setInputFiles({ name: side + '-fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(payload)) });
       const response = page.waitForResponse(response => response.url().endsWith('/predictions/' + side));
@@ -137,6 +154,8 @@ async function main() {
     await page.getByRole('heading', { name: '评测报告', exact: true }).waitFor();
     assert.match(await page.locator('#rs-body').innerText(), /training_verified: false/);
     assert.match(await page.locator('#rs-body').innerText(), /配对收益不确定/);
+    if (businessScope) await page.locator('#rs-body').getByText('按业务场景验收', { exact: true }).waitFor();
+    if (explicitQuestions) assert.match(await page.locator('#rs-body').innerText(), /未询问的问题不作为负例/);
     const downloadEvent = page.waitForEvent('download');
     await page.getByRole('link', { name: '下载 report.json', exact: true }).click();
     const download = await downloadEvent; await download.saveAs(path.join(output, 'fixture-report.json'));
@@ -160,6 +179,7 @@ async function main() {
     await page.screenshot({ path: path.join(output, 'results-mobile.png'), fullPage: true });
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ browser: await browser.version(), javascript_errors: errors, widths_checked: [1440, 390],
+      question_count: questionCount, business_scope: businessScope, explicit_questions: explicitQuestions,
       manual_preparation: 'passed', validation_before_test: 'passed', proposal_review_disabled_gpu_start_cancel:'passed', report_download: 'passed', training_verified: false, evidence: output }));
   } finally {
     if (browser) await browser.close();

@@ -1,5 +1,6 @@
 """Immutable phase-one preparation; no training CLI or GPU calls are invented here."""
 from datetime import datetime, timezone
+from collections import Counter
 import hashlib
 import io
 import itertools
@@ -10,7 +11,7 @@ from pathlib import Path
 import uuid
 import zipfile
 
-from datasets import DataError, assert_disjoint, exposure_keys, fingerprint, grouped_rows
+from datasets import DataError, assert_disjoint, exposure_keys, fingerprint, grouped_rows, question_ids
 from evaluation import evaluate, validate_predictions
 from kev_contract import CONTRACT
 
@@ -58,28 +59,53 @@ def assert_unexposed(store, rows):
         raise DataError('样本/关联组已参与最终测试，不能通过改 ID 重用为训练、校准、验证或新的独立 test；请作为 regression。')
 
 
+def task_policy(task):
+    return {key: task[key] for key in ('business_scope', 'label_mode') if key in task}
+
+
+def scoped_rows(rows, task):
+    scope = task.get('business_scope', '')
+    if scope and any(row.get('scenario', scope) != scope for row in rows):
+        raise DataError('样本的业务场景与固定任务不一致，请分别建立任务和实验。')
+    return [{**row, 'scenario': scope} for row in rows] if scope else rows
+
+
 def system_one(rows, task, role='train'):
+    rows = scoped_rows(rows, task)
     objects = {item['id']: item for item in task['objects']}
     estimated = len(rows) * sum(len(json.dumps(obj, ensure_ascii=False).encode()) + 100 for obj in objects.values())
     estimated += sum(len(row['text'].encode()) + 500 for row in rows)
     if estimated > 128 * 1024 * 1024:
-        raise DataError('完整 50 对象转换预计超过 128 MB，请减小数据版本或精简任务说明。')
+        raise DataError('问题转换预计超过 128 MB，请减小数据版本或精简任务说明。')
     output = []
     groups = {row['id']: sha(sorted(item['id'] for item in group)) for group in grouped_rows(rows) for row in group}
     for row in rows:
         if set(row['intents']) - objects.keys():
             raise DataError('数据包含任务目录之外的未知对象。')
         original = row.get('questions')
-        if original is not None and set(original) != objects.keys():
-            raise DataError('Noul 数据必须显式标注全 50 个对象；缺失对象不能补为 false。')
+        if task.get('label_mode', 'complete') == 'explicit_questions':
+            if not isinstance(original, dict) or not original or set(original) - objects.keys():
+                raise DataError('按明确问题标注的任务需要非空 Noul questions，且问题必须属于固定目录。')
+        elif original is not None and set(original) != objects.keys():
+            raise DataError('完整标注模式必须显式标注全部对象；缺失对象不能补为 false。')
+        if original is not None:
+            if any(not isinstance(q, dict) or q.get('type') != 'noul' or type(q.get('label')) is not bool
+                   for q in original.values()):
+                raise DataError('每个 Noul 问题必须提供明确布尔标签。')
+            if sorted(key for key, q in original.items() if q['label']) != sorted(row['intents']):
+                raise DataError('显式 Noul 标签与记录的 intents 不一致。')
         questions = {}
+        asked = set(question_ids(row, objects))
         for name, obj in objects.items():
+            if name not in asked:
+                continue
             questions[name] = {'type': 'noul', 'instructions': obj['instructions'],
                                'criteria': obj['criteria'], 'label': name in row['intents']}
             # Converted hard-label data uses the frozen task's question schema.
             # Original instructions/criteria/extra fields remain in original.bin
             # and records.json; soft targets cannot silently override bool labels.
-        output.append({'id': row['id'], 'state': row['text'], 'questions': questions,
+        state = {'scenario': row['scenario'], 'text': row['text']} if 'scenario' in row else row['text']
+        output.append({'id': row['id'], 'state': state, 'questions': questions,
                        '_meta': {'id': row['id'], 'group_id': groups[row['id']],
                                  'source': row.get('source_id', row.get('source_metadata', {}).get('source', 'user')),
                                  'split': role, 'variant': 'clean'},
@@ -101,16 +127,24 @@ class PhaseOne:
     def task(self, item_id):
         value = self.store.read(self.store.path('task-specs', item_id) / 'meta.json')
         definition = {key: value[key] for key in ('name', 'objects', 'schema_version', 'task_type')}
+        definition.update(task_policy(value))
         if sha(definition) != value['sha256']:
             raise DataError('不可变任务目录哈希不匹配。')
         return value
 
     def create_task(self, body):
-        fields(body, ('name', 'objects'), ('name', 'objects'))
+        fields(body, ('name', 'objects', 'business_scope', 'label_mode'), ('name', 'objects'))
         name = text(body['name'], '任务名称', 100)
         objects = body['objects']
-        if not isinstance(objects, list) or len(objects) != 50:
-            raise DataError('第一阶段车载任务需要显式提供完整 50 对象目录；平台不会猜测目录。')
+        if not isinstance(objects, list) or not 1 <= len(objects) <= 100:
+            raise DataError('任务需要显式提供 1～100 个问题；平台不会猜测目录。')
+        mode = body.get('label_mode', 'complete')
+        if mode not in ('complete', 'explicit_questions'):
+            raise DataError('label_mode 必须为 complete 或 explicit_questions。')
+        scope = body.get('business_scope', '')
+        if not isinstance(scope, str) or len(scope) > 100:
+            raise DataError('business_scope 必须为不超过 100 字符的业务场景名称。')
+        scope = scope.strip()
         seen, validated = set(), []
         for obj in objects:
             fields(obj, ('id', 'instructions', 'criteria'), ('id', 'instructions', 'criteria'))
@@ -123,7 +157,8 @@ class PhaseOne:
                 raise DataError('对象 ID 重复或使用保留的 unknown。')
             seen.add(item['id'].casefold())
             validated.append(item)
-        value = {'name': name, 'objects': validated, 'schema_version': 1, 'task_type': 'noul-multilabel'}
+        value = {'name': name, 'objects': validated, 'schema_version': 1, 'task_type': 'noul-multilabel',
+                 'business_scope': scope, 'label_mode': mode}
         value.update(id=str(uuid.uuid4()), created_at=timestamp(), sha256=sha(value))
         self.store.write(self.store.path('task-specs', value['id']) / 'meta.json', value)
         return value
@@ -150,7 +185,7 @@ class PhaseOne:
         directory = self.store.path('datasets', dataset_id)
         meta = self.store.read(directory / 'meta.json')
         if meta['role'] != 'train' or not meta.get('task_spec_id'):
-            raise DataError('只能从已绑定 50 对象任务的训练池派生分区；test/regression 不参与切分。')
+            raise DataError('只能从已绑定任务的训练池派生分区；test/regression 不参与切分。')
         rows = self.store.read(directory / 'records.json')
         if fingerprint(rows) != meta['sha256']:
             raise DataError('训练池版本哈希不匹配。')
@@ -202,7 +237,7 @@ class PhaseOne:
                     'partitions': {role: {'id': meta['id'], 'sha256': meta['sha256'],
                         'original_sha256': meta['original_sha256'], 'count': len(records[role])}
                         for role, meta in versions.items()}, 'seed': 42,
-                    'normalization_version': 'noul-v2', 'near_duplicate_check': 'explicit-groups+unicode-surface',
+                    'normalization_version': 'noul-v3-business-questions', 'near_duplicate_check': 'explicit-groups+unicode-surface',
                     'token_length_verified': False}
         limits = {'max_trials': number(body['max_trials'], '候选数量', 1, 20, True),
                   'max_training_minutes': number(body['max_training_minutes'], '训练分钟', 5, 1440, True)}
@@ -214,6 +249,13 @@ class PhaseOne:
                  'max_training_minutes': limits['max_training_minutes'], 'claude_budget_usd': 0,
                  'status': 'draft', 'created_at': now, 'updated_at': now, 'events': [], 'error': None,
                  'report_revision': None, 'selected_trial_id': None, 'training_verified': False}
+        value.update(task_policy(task))
+        value['scenario_counts'] = {role: dict(Counter(row.get('scenario', '未指定') for row in rows))
+                                   for role, rows in records.items()}
+        scenarios = set().union(*(counts.keys() for counts in value['scenario_counts'].values()))
+        value['coverage_warnings'] = [f'{name} 在 {role} 中没有样本，不能宣称该业务已完成独立验收。'
+            for name in sorted(scenarios) for role in ('train', 'calibration', 'validation', 'test')
+            if not value['scenario_counts'][role].get(name)]
         directory = self.store.path('runs', run_id)
         with self.store.lock:
             # Training workers/Agents receive only these three partitions.
@@ -229,7 +271,10 @@ class PhaseOne:
         for item in self.store.list('trials'):
             if item['experiment_id'] == run_id:
                 report_path = self.validation_path(item)
-                item['validation_summary'] = self.store.read(report_path)['metrics']['overall'] if report_path.is_file() else None
+                metrics = self.store.read(report_path)['metrics'] if report_path.is_file() else {}
+                item['validation_summary'] = metrics.get('overall')
+                item['validation_by_scenario'] = metrics.get('by_scenario', {})
+                item['validation_annotation_scope'] = metrics.get('annotation_scope', 'complete')
                 output.append(item)
         return output
 
@@ -283,6 +328,7 @@ class PhaseOne:
                       'lora_resume_supported': False, 'execution_protocol_version': 1,
                       'evaluation_protocol': {'dtype': 'fp32', 'backend': 'torch', 'merge': False,
                                               'thresholds': 'fixed_0_5', 'training_question_group_size': 5}}
+            frozen['task_policy'] = task_policy(self.task(run['task_spec_id']))
             trial_id = identity['id'] if identity else str(uuid.uuid4())
             item = {'id': trial_id, 'experiment_id': run_id, 'created_at': timestamp(),
                     'status': 'WAITING_FOR_USER', 'config_sha256': sha(frozen), 'config': frozen,
@@ -306,6 +352,8 @@ class PhaseOne:
                 or frozen['limits'] != run['limits']):
             raise DataError('冻结 Trial 与当前数据/模型/预算清单不一致。')
         task = self.task(run['task_spec_id'])
+        if frozen.get('task_policy', {}) != task_policy(task):
+            raise DataError('冻结的业务场景或标注模式与任务目录不一致。')
         partitions = {role: self.store.read(run_dir / (('training' if role == 'train' else role) + '.json'))
                       for role in ('train', 'calibration', 'validation')}
         for role, rows in partitions.items():
@@ -328,7 +376,7 @@ class PhaseOne:
                      'kev-source-contract.json': json.dumps(CONTRACT, sort_keys=True).encode(),
                      'worker-inputs.json': json.dumps(inputs, ensure_ascii=False, sort_keys=True).encode()}
             for role, rows in inputs['partitions'].items():
-                converted = system_one(rows, {'objects': inputs['objects']}, role)
+                converted = system_one(rows, {'objects': inputs['objects'], **inputs['config'].get('task_policy', {})}, role)
                 files[role + '.jsonl'] = ('\n'.join(json.dumps(row, ensure_ascii=False, sort_keys=True)
                                                     for row in converted) + '\n').encode()
             manifest = {'schema_version': 1, 'kind': 'preparation_bundle', 'is_model': False,

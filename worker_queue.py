@@ -12,7 +12,7 @@ import tempfile
 
 from datasets import DataError
 from claude_runner import redact
-from phase_one import fields, text, timestamp
+from phase_one import fields, task_policy, text, timestamp
 from kev_contract import CONTRACT
 from model_artifacts import canonical_sha, file_sha, inspect_bundle
 from pipeline_commit import commit_training, commit_evaluation, validate_training_bundle, validate_evaluation_bundle
@@ -185,6 +185,7 @@ class WorkerQueue:
             config={'purpose':'baseline_only','execution_protocol_version':1,'model':run['model'],
                 'code_sha256':self.phase.code_sha256,'data_manifest_sha256':run['manifest_sha256'],'limits':run['limits'],
                 'resume_from':None,'evaluation_protocol':{'dtype':'fp32','backend':'torch','merge':False,'thresholds':'fixed_0_5'}}
+            config['task_policy'] = task_policy(self.phase.task(run['task_spec_id']))
             job={'id':str(uuid.uuid4()),'attempt_id':str(uuid.uuid4()),'experiment_id':experiment_id,'trial_id':None,
                 'kind':'gpu_baseline_v1','state':'QUEUED','created_at':timestamp(),'worker_id':None,'lease_id':None,
                 'lease_expires_at':None,'stop_required':False,'cancel_requested':False,'result':None,'training_verified':False,
@@ -195,6 +196,8 @@ class WorkerQueue:
 
     def baseline_inputs(self,job):
         run=self.phase.checked_run(job['experiment_id']);config=job['config']
+        if config.get('task_policy', {}) != task_policy(self.phase.task(run['task_spec_id'])):
+            raise DataError('冻结基线的业务场景或标注模式不匹配。')
         if (job['kind']!='gpu_baseline_v1' or canonical_sha(config)!=job['config_sha256']
                 or config['data_manifest_sha256']!=run['manifest_sha256'] or config['limits']!=run['limits']
                 or config['model']!=run['model']): raise DataError('冻结基线配置/数据清单不匹配。')
@@ -324,6 +327,8 @@ class WorkerQueue:
     def evaluation_inputs(self, job):
         run = self.phase.checked_run(job['experiment_id'])
         trial = self.read('trials', job['trial_id'])
+        if trial['config'].get('task_policy', {}) != task_policy(self.phase.task(run['task_spec_id'])):
+            raise DataError('最终评测的业务场景或标注模式不匹配。')
         if run['manifest_sha256'] != trial['config']['data_manifest_sha256']:
             raise DataError('最终评测数据清单与冻结模型配置不一致。')
         if (run.get('selected_trial_id') != trial['id'] or run.get('final_evaluation_job_id') != job['id']

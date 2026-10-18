@@ -3,7 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from datasets import DataError, exposure_keys, parse_json
+from datasets import DataError, expanded_training_count, exposure_keys, parse_json
 from evaluation import comparison, evaluate
 from kev_contract import CONTRACT, inspect_checkpoint
 from model_artifacts import canonical_sha, file_sha, inspect_bundle
@@ -48,11 +48,13 @@ def validate_training_bundle(directory, manifest, trial, inputs, allow_fixture=F
         raise DataError('GPU runtime 验证失败。')
     inspect_checkpoint(root/'checkpoint', config['model'])
     loaded = read(root/'reports/LOADING.json')
-    if (not loaded.get('loader_verified') or loaded.get('objects_verified') != 50
+    if (not loaded.get('loader_verified') or loaded.get('objects_verified') != len(inputs['objects'])
             or loaded.get('head_sha256') != file_sha(root/'checkpoint/head.pt')
             or loaded.get('weights_sha256') != file_sha(root/'checkpoint/adapter_model.safetensors')):
         raise DataError('模型加载回执与当前字节不一致。')
-    expanded = len(inputs['partitions']['train'])*10
+    expanded = expanded_training_count(inputs['partitions']['train'], [obj['id'] for obj in inputs['objects']])
+    if validation.get('training_records_expanded') != expanded:
+        raise DataError('训练问题展开回执与明确标注覆盖不一致。')
     for stage in ('SMOKE', 'TRAINING'):
         receipt = read(root/'reports'/(stage+'.json'))
         loss_file = Path(receipt['loss_file'])
@@ -67,7 +69,8 @@ def validate_training_bundle(directory, manifest, trial, inputs, allow_fixture=F
         if policy != read(root/'policy'/(target+'-calibration.json')):
             raise DataError('实际导出策略与已验证校准回执不一致。')
         for role in ('train', 'calibration', 'validation'):
-            raw = ''.join(json.dumps(row, ensure_ascii=False)+'\n' for row in system_one(inputs['partitions'][role], {'objects': inputs['objects']}, role)).encode()
+            raw = ''.join(json.dumps(row, ensure_ascii=False)+'\n' for row in system_one(
+                inputs['partitions'][role], {'objects': inputs['objects'], **config.get('task_policy', {})}, role)).encode()
             key = 'data_sha256' if role == 'calibration' else role+'_sha256'
             if policy.get(key) != hashlib.sha256(raw).hexdigest():
                 raise DataError('校准来源登记与冻结分区不符。')
@@ -153,7 +156,7 @@ def validate_evaluation_bundle(directory, manifest, trial, inputs, allow_fixture
     predictions = {stage: normalized_report(root, stage, cases, objects, data_sha)
                    for stage in ('FINAL_BASELINE_RAW', 'FINAL_CANDIDATE_RAW', 'FINAL_BASELINE_SYSTEM', 'FINAL_CANDIDATE_SYSTEM')}
     loaded = read(root/'reports/FINAL_LOADING.json')
-    if (not loaded.get('loader_verified') or loaded.get('objects_verified') != 50
+    if (not loaded.get('loader_verified') or loaded.get('objects_verified') != len(inputs['objects'])
             or loaded.get('head_sha256') != inputs['frozen_files']['checkpoint/head.pt']['sha256']
             or loaded.get('weights_sha256') != inputs['frozen_files']['checkpoint/adapter_model.safetensors']['sha256']):
         raise DataError('最终评估加载器回执不完整。')

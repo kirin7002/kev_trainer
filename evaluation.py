@@ -2,7 +2,7 @@
 import math
 from collections import Counter
 from statistics import mean
-from datasets import DataError, grouped_rows, labels
+from datasets import DataError, grouped_rows, labels, question_ids
 
 
 def divide(a, b):
@@ -46,11 +46,14 @@ def validate_predictions(payload, cases, sha, object_ids=None):
         intents = labels(row['intents'])
         if object_ids is not None and set(intents) - set(object_ids):
             raise DataError('预测包含任务目录之外的未知对象。')
+        asked = question_ids(expected[row['id']], object_ids) if object_ids is not None else None
+        if asked is not None and set(intents) - set(asked):
+            raise DataError('预测包含当前样本未明确标注的问题。')
         result[row['id']] = {'intents': intents, 'latency_ms': latency}
         if 'probabilities' in row:
             probabilities = row['probabilities']
-            if object_ids is None or not isinstance(probabilities, dict) or set(probabilities) != set(object_ids):
-                raise DataError('原始概率需要绑定任务目录并覆盖完整 50 对象。')
+            if object_ids is None or not isinstance(probabilities, dict) or set(probabilities) != set(asked):
+                raise DataError('原始概率需要绑定任务目录并完整覆盖该样本的明确问题。')
             if any(type(p) not in (int, float) or not 0 <= p <= 1 for p in probabilities.values()):
                 raise DataError('对象概率必须是 0～1 的有限数值。')
             result[row['id']]['probabilities'] = probabilities
@@ -101,6 +104,7 @@ def summarize(rows, object_ids=None):
         calibration['brier_score'] = squared / count
         calibration['ece'] = sum(abs(bucket[1]-bucket[2]) for bucket in bins) / count
     return {'total': len(rows), 'correct': sum(r['passed'] for r in rows),
+        'annotated_questions': sum(len(row.get('asked_questions', [])) for row in rows) if object_ids is not None else None,
         'accuracy': divide(sum(r['passed'] for r in rows), len(rows)),
         'precision': divide(tp, tp+fp), 'recall': divide(tp, tp+fn), 'f1': divide(2*tp, 2*tp+fp+fn),
         'macro_f1': sum(f1_values)/len(f1_values) if f1_values else None,
@@ -112,16 +116,24 @@ def summarize(rows, object_ids=None):
 
 
 def evaluate(cases, predictions):
+    objects = predictions.get('object_ids')
     rows = []
     for case in cases:
         actual = predictions['predictions'][case['id']]
         expected_set, actual_set = set(case['intents']), set(actual['intents'])
         rows.append({'id': case['id'], 'text': case['text'], 'expected': expected_set, 'actual': actual_set,
+            'scenario': case.get('scenario', '未指定'),
+            'asked_questions': question_ids(case, objects) if objects is not None else sorted(expected_set | actual_set),
             'passed': expected_set == actual_set, 'latency_ms': actual['latency_ms'],
             **({'probabilities': actual['probabilities']} if 'probabilities' in actual else {}),
             'group': 'unknown' if not expected_set else 'single' if len(expected_set) == 1 else 'multi'})
-    objects = predictions.get('object_ids')
+    scenarios = {}
+    for row in rows:
+        scenarios.setdefault(row['scenario'], []).append(row)
     result = {'overall': summarize(rows, objects),
+        'annotation_scope': 'explicit_questions_only' if objects is not None and any(
+            len(row['asked_questions']) != len(objects) for row in rows) else 'complete',
+        'by_scenario': {name: summarize(group, objects) for name, group in sorted(scenarios.items())},
         'groups': {name: summarize([r for r in rows if r['group'] == name], objects) for name in ('single', 'multi', 'unknown')},
         'by_object_count': {str(n): summarize([r for r in rows if len(r['expected']) == n], objects)
                            for n in sorted({len(r['expected']) for r in rows})},

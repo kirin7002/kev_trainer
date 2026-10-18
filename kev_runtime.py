@@ -234,7 +234,7 @@ def validate_inputs(payload):
                         raise ValueError('training question group exceeds exact tokenizer context')
                     expanded.append(part)
     (work / 'data' / 'train-expanded.jsonl').write_text(''.join(json.dumps(row, ensure_ascii=False)+'\n' for row in expanded))
-    # Full 50-object evaluation remains intact; only the packed total is lifted.
+    # Evaluation preserves every explicitly asked question; only the packed total is lifted.
     eval_context = {**context, 'max_packed': max(context['max_packed'], maximum)}
     result = {'runtime': runtime, 'compatibility': proof, 'tokenizer_verified': True, 'counts': counts,
               'training_records_expanded': len(expanded), 'question_group_size': 5,
@@ -448,6 +448,9 @@ def load_model(payload):
     from kev.data import materialize
     from kev.model import training_context
     record = records(work, 'validation' if payload['mode'] in ('train','baseline') else 'test')[0]
+    # The loader canary checks the entire task schema, independently of sparse sample labels.
+    record = {**record, 'questions': {obj['id']: {'type': 'noul', 'instructions': obj['instructions'],
+        'criteria': obj['criteria'], 'label': False} for obj in payload['objects']}}
     context = read(work/'registry/validation.json')['evaluation_context']
     encoded = model.encode(tokenizer, materialize(record), max_state=context['max_state'], max_branch=context['max_branch'], strict=True)
     with torch.no_grad(): outputs = model.forward(encoded)

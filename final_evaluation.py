@@ -55,7 +55,8 @@ class FinalEvaluationPipeline:
             raise DataError('最终测试 SHA 不匹配。')
         data = work/'data/test.jsonl'
         data.parent.mkdir(exist_ok=True)
-        data.write_text(''.join(json.dumps(row, ensure_ascii=False)+'\n' for row in system_one(cases, {'objects': inputs['objects']}, 'test')))
+        data.write_text(''.join(json.dumps(row, ensure_ascii=False)+'\n' for row in system_one(
+            cases, {'objects': inputs['objects'], **inputs['config'].get('task_policy', {})}, 'test')))
         payload = {'mode': 'evaluate', 'work': str(work.resolve()), 'config': inputs['config'], 'objects': inputs['objects']}
         validation = self.stage('FINAL_VALIDATING', 'validate-evaluation', payload)
         runtime = validation['runtime']

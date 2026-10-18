@@ -265,8 +265,16 @@ ul.tight li{margin:3px 0}
         <div id="ds-list"><div class="empty"><p>加载中…</p></div></div>
       </div>
       <div class="panel">
-        <h3>固定 50 对象任务目录</h3>
-        <p class="hint">上传 JSON：name 与 objects 数组（恰好 50 项，每项 id、instructions、criteria）。Noul 的 criteria 是 true/false 描述对象，例如 {"true":"涉及此对象","false":"未涉及"}，也可用空对象。目录来自你的业务定义；平台不会编造对象。Noul 数据必须显式标全 50 项，缺失标签不能补为 false。</p>
+        <h3>固定业务问题目录</h3>
+        <p class="hint">任务 JSON 包含 name 与 objects 数组（1～100 项，每项 id、instructions、criteria）。criteria 为 true/false 描述对象。完整标注模式要求每条 Noul 样本标全目录；按明确问题标注模式只接受显式布尔 questions，未询问的问题不作为反例。</p>
+        <div class="grid2">
+          <label class="field"><span>业务场景</span><input id="task-scope" type="text" maxlength="100" placeholder="沿用任务文件，例如：车端、App 远程控制"></label>
+          <label class="field"><span>标注模式</span><select id="task-label-mode">
+            <option value="">沿用文件（默认完整标注）</option>
+            <option value="complete">完整标注</option>
+            <option value="explicit_questions">仅明确标注的问题</option>
+          </select></label>
+        </div>
         <input id="task-file" type="file" accept=".json">
         <button id="task-upload" class="btn ghost sm">创建不可变任务版本</button>
         <div id="task-list" class="hint"></div>
@@ -504,7 +512,7 @@ async function loadTasks() {
       var select = document.getElementById(id), keep = select.value;
       clear(select);
       select.appendChild(h('option', { value: '', text: '请选择任务版本…' }));
-      taskVersions.forEach(function (task) { select.appendChild(h('option', { value: task.id, text: task.name + ' · ' + shortSha(task.sha256) })); });
+      taskVersions.forEach(function (task) { select.appendChild(h('option', { value: task.id, text: task.name + ' · ' + task.objects.length + ' 问' + (task.business_scope ? ' · ' + task.business_scope : '') + ' · ' + shortSha(task.sha256) })); });
       if (keep) select.value = keep;
     });
     document.getElementById('task-list').textContent = '已有 ' + taskVersions.length + ' 个不可变任务版本。';
@@ -549,7 +557,11 @@ document.getElementById('task-upload').addEventListener('click', async function 
   if (file.size > 65536) { toast('任务目录不能超过 64 KB。', 'error'); return; }
   busy(btn, true, '保存中…');
   try {
-    var task = await api('/api/task-specs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
+    var query = new URLSearchParams();
+    var scope = document.getElementById('task-scope').value.trim(), mode = document.getElementById('task-label-mode').value;
+    if (scope) query.set('business_scope', scope);
+    if (mode) query.set('label_mode', mode);
+    var task = await api('/api/task-specs' + (query.size ? '?' + query.toString() : ''), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
     await loadTasks();
     document.getElementById('up-task').value = task.id;
     document.getElementById('manual-task').value = task.id;
@@ -632,6 +644,8 @@ async function renderManualTrials(experiment, box) {
       }); card.appendChild(validationButton);
       if (trial.validation_summary) {
         card.appendChild(h('p', { text: 'validation 准确率：' + pct(trial.validation_summary.accuracy) + ' · 来源：' + (trial.active_model ? trial.active_model.source : 'user_imported_predictions') + '，训练验证：' + String(!!trial.training_verified) }));
+        if (trial.validation_annotation_scope === 'explicit_questions_only') card.appendChild(h('p', { class: 'hint', text: '仅对各样本明确标注的问题计分，不代表未询问问题或全目录的准确率。' }));
+        card.appendChild(scenarioTable(trial.validation_by_scenario || {}));
         var select = h('button', { class: 'btn ghost sm' }, experiment.selected_trial_id === trial.id ? '已选候选' : '按 validation 选定此候选');
         select.addEventListener('click', async function () {
           try { await api('/api/experiments/' + encodeURIComponent(experiment.id) + '/select-trial', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trial_id: trial.id }) }); await refreshExpDetail(); }
@@ -1125,6 +1139,10 @@ function renderExpDetail() {
   if (d.error) panel.appendChild(h('div', { class: 'banner red', text: '错误：' + d.error }));
   if (d.workflow_version === 2) {
     panel.appendChild(h('div', { class: 'banner blue', text: '手动 0.8B 实验：配置不可变，校准/验证/最终测试隔离。CPU 准备检查通过不代表 GPU 或训练通过。' }));
+    panel.appendChild(h('div', { class: 'kv' },
+      kvItem('业务场景', d.business_scope || '未限定'),
+      kvItem('标注模式', d.label_mode === 'explicit_questions' ? '仅明确标注的问题' : '完整标注')));
+    if ((d.coverage_warnings || []).length) panel.appendChild(h('div', { class: 'banner amber', text: d.coverage_warnings.join(' ') }));
     panel.appendChild(h('pre', { class: 'code', text: JSON.stringify({ partitions: d.split, limits: d.limits, data_manifest_sha256: d.manifest_sha256 }, null, 2) }));
     var trialBox = h('div'); panel.appendChild(trialBox);
     box.appendChild(panel);
@@ -1403,6 +1421,25 @@ function metricRow(name, b, c, fmt) {
     h('td', { class: 'mono', text: fmt(b) }),
     h('td', { class: 'mono', text: fmt(c) }));
 }
+function scenarioTable(candidate, baseline) {
+  var names = Object.keys(candidate);
+  if (!names.length || (names.length === 1 && names[0] === '未指定')) return h('div');
+  var body = h('tbody');
+  names.forEach(function (name) {
+    var current = candidate[name], previous = baseline && baseline[name];
+    var row = h('tr', null, h('td', { text: name }), h('td', { text: String(current.total) }),
+      h('td', { text: current.annotated_questions == null ? '—' : String(current.annotated_questions) }));
+    if (previous) row.appendChild(h('td', { text: pct(previous.accuracy) }));
+    row.appendChild(h('td', { text: pct(current.accuracy) }));
+    if (previous) row.appendChild(h('td', { text: pct(previous.f1) }));
+    row.appendChild(h('td', { text: pct(current.f1) }));
+    body.appendChild(row);
+  });
+  var headers = ['业务', '样本数', '明确问题数'].concat(baseline ? ['基线准确率', '候选准确率', '基线 F1', '候选 F1'] : ['准确率', 'F1']);
+  return h('div', null, h('div', { class: 'section-title', text: '按业务场景验收' }),
+    h('div', { class: 'tablewrap' }, h('table', { class: 'data', style: 'min-width:' + (baseline ? '660' : '440') + 'px' },
+      h('thead', null, h('tr', null, headers.map(function (name) { return h('th', { text: name }); }))), body)));
+}
 function renderReport(d, report) {
   var panel = h('div', { class: 'panel' });
   panel.appendChild(h('h3', { text: '评测报告' }));
@@ -1425,9 +1462,11 @@ function renderReport(d, report) {
         : '两侧 runtime（device/backend/dtype）不一致或缺失，和/或部分样本缺少 latency_ms 计时（覆盖不完整），耗时数据不具备严格可比性；准确率等集合指标仍然有效。')));
   }
   var b = report.baseline, c = report.candidate;
+  if (c.annotation_scope === 'explicit_questions_only') panel.appendChild(h('div', { class: 'banner blue', text: '仅评测每条样本明确标注的问题。未询问的问题不作为负例；本报告不代表全目录准确率。' }));
+  if (c.by_scenario) panel.appendChild(scenarioTable(c.by_scenario, b.by_scenario || {}));
   var bc = b.overall.probability_calibration, cc = c.overall.probability_calibration;
   if (bc && cc) {
-    panel.appendChild(h('p', { class: 'hint', text: '全 50 对象概率覆盖：原模型 ' + bc.coverage + '/' + bc.total + '，候选 ' + cc.coverage + '/' + cc.total + '。Brier：' + num(bc.brier_score) + ' / ' + num(cc.brier_score) + '；ECE（10 bins）：' + num(bc.ece) + ' / ' + num(cc.ece) + '。未提供完整原始概率时不可计算，不代表已做校准。' }));
+    panel.appendChild(h('p', { class: 'hint', text: '明确问题的完整概率覆盖：原模型 ' + bc.coverage + '/' + bc.total + '，候选 ' + cc.coverage + '/' + cc.total + '。Brier：' + num(bc.brier_score) + ' / ' + num(cc.brier_score) + '；ECE（10 bins）：' + num(bc.ece) + ' / ' + num(cc.ece) + '。未提供完整原始概率时不可计算，不代表已做校准。' }));
   }
 
   /* 顶部卡片 */

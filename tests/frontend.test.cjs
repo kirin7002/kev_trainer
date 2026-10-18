@@ -134,3 +134,13 @@ test('prototype names survive in object metrics and case IDs', () => {
   const caseRows = rows.filter(row => row.children.length === 6 && row.children[0]?.tag === 'td');
   assert.deepEqual(caseRows.map(row => row.children[0].attrs.text), names);
 });
+
+test('business tables preserve scenario names and explicit question counts', () => {
+  const context = vm.createContext({ h: element, pct: String });
+  load(context, 'scenarioTable');
+  const metrics = JSON.parse('{"__proto__":{"total":2,"annotated_questions":3,"accuracy":1,"f1":1},"app":{"total":1,"annotated_questions":1,"accuracy":0,"f1":0}}');
+  const tree = context.scenarioTable(metrics);
+  const rows = walk(tree).filter(node => node.tag === 'tr' && node.children[0]?.tag === 'td');
+  assert.deepEqual(rows.map(row => row.children[0].attrs.text), ['__proto__', 'app']);
+  assert.deepEqual(rows.map(row => row.children[2].attrs.text), ['3', '1']);
+});

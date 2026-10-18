@@ -4,7 +4,7 @@ import math
 import re
 from pathlib import Path
 
-from datasets import DataError
+from datasets import DataError, question_ids
 from evaluation import validate_predictions
 
 
@@ -29,7 +29,7 @@ def validate_image_provenance(value):
 
 
 def calibration_rows(rows, cases, object_ids):
-    expected = {(case['id'], obj): int(obj in case['intents']) for case in cases for obj in object_ids}
+    expected = {(case['id'], obj): int(obj in case['intents']) for case in cases for obj in question_ids(case, object_ids)}
     seen = set()
     if not isinstance(rows, list): raise DataError('校准 rows 必须为数组。')
     for row in rows:
@@ -74,8 +74,9 @@ def training_metrics(value, observations, expected_records, smoke=False):
 def convert_benchmark(lines, report, cases, object_ids, dataset_sha, thresholds=None):
     coverage = report.get('coverage', {})
     n = len(cases)
+    questions = sum(len(question_ids(case, object_ids)) for case in cases)
     if (coverage.get('requested_records') != n or coverage.get('evaluated_records') != n or
-            coverage.get('requested_questions') != n*len(object_ids) or coverage.get('evaluated_questions') != n*len(object_ids) or
+            coverage.get('requested_questions') != questions or coverage.get('evaluated_questions') != questions or
             coverage.get('rejected_records') != 0 or coverage.get('truncated_records') != 0):
         raise DataError('Benchmark coverage 不完整；不能跳过失败或过长样本。')
     expected = {case['id']: case for case in cases}
@@ -87,10 +88,11 @@ def convert_benchmark(lines, report, cases, object_ids, dataset_sha, thresholds=
         seen.add(case_id)
         prediction = item.get('prediction', {})
         raw = prediction.get('probabilities')
-        if not isinstance(raw, dict) or set(raw) != set(object_ids):
-            raise DataError('Benchmark 没有完整 50 对象输出。')
+        asked = question_ids(expected[case_id], object_ids)
+        if not isinstance(raw, dict) or set(raw) != set(asked):
+            raise DataError('Benchmark 没有完整覆盖当前样本的明确问题。')
         probabilities = {}
-        for obj in object_ids:
+        for obj in asked:
             pair = raw[obj]
             if not isinstance(pair, dict) or set(pair) != {'false', 'true'}:
                 raise DataError('Noul 概率键必须完整。')

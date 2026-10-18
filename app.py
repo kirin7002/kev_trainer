@@ -21,7 +21,7 @@ from machine import get_machine_client
 from storage import Store
 from starlette.concurrency import run_in_threadpool
 from model_artifacts import MAX_COMPRESSED, file_sha
-from phase_one import PARTITIONS, PhaseOne, assert_unexposed, sha
+from phase_one import PARTITIONS, PhaseOne, assert_unexposed, scoped_rows, sha
 from worker_queue import LeaseConflict, WorkerQueue
 from optimization import Optimization
 
@@ -229,6 +229,8 @@ def create_app(data_dir=None):
         return MODELS
 
     def save_dataset(rows, role, filename, raw=None, task_spec_id=None, source_rule=''):
+        if task_spec_id:
+            rows = scoped_rows(rows, phase.task(task_spec_id))
         if role != 'regression':
             phase.assert_not_exposed(rows)
         converted = phase.validate_dataset(rows, task_spec_id, role) if task_spec_id else None
@@ -238,7 +240,7 @@ def create_app(data_dir=None):
             raw = json.dumps(rows, ensure_ascii=False, allow_nan=False).encode()
         meta = {'id': item_id, 'role': role, 'filename': Path(filename).name[:200],
             'created_at': now(), 'sha256': fingerprint(rows), 'profile': profile(rows),
-            'version_id': item_id, 'schema_version': 2, 'normalization_version': 'noul-v2',
+            'version_id': item_id, 'schema_version': 2, 'normalization_version': 'noul-v3-business-questions',
             'original_sha256': hashlib.sha256(raw).hexdigest(), 'task_spec_id': task_spec_id,
             'source_rule': source_rule[:1000], 'token_length_verified': False,
             'near_duplicate_check': 'explicit-groups+unicode-surface'}
@@ -301,8 +303,13 @@ def create_app(data_dir=None):
         return value
 
     @app.post('/api/task-specs', status_code=201)
-    async def create_task_spec(request: Request):
-        return phase.create_task(await config_body(request))
+    async def create_task_spec(request: Request, business_scope: str | None = None, label_mode: str | None = None):
+        body = await config_body(request)
+        if business_scope is not None:
+            body['business_scope'] = business_scope
+        if label_mode is not None:
+            body['label_mode'] = label_mode
+        return phase.create_task(body)
 
     @app.get('/api/task-specs')
     def task_specs():

@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from datasets import DataError, fingerprint, parse_json
+from datasets import DataError, expanded_training_count, fingerprint, parse_json
 from evaluation import comparison
 from execution import Deadline, Supervisor
 from kev_contract import CONTRACT, inspect_checkpoint
@@ -103,7 +103,8 @@ class TrialPipeline:
                 raise DataError('输入分区哈希不匹配。')
             path = work/'data'/(role+'.jsonl')
             path.parent.mkdir(exist_ok=True)
-            path.write_text(''.join(json.dumps(row, ensure_ascii=False)+'\n' for row in system_one(rows, {'objects': inputs['objects']}, role)))
+            path.write_text(''.join(json.dumps(row, ensure_ascii=False)+'\n' for row in system_one(
+                rows, {'objects': inputs['objects'], **config.get('task_policy', {})}, role)))
         write(work/'registry'/'inputs.json', {'partition_sha256': inputs['partition_sha256'],
               'config_sha256': inputs['config_sha256'], 'task_sha256': canonical_sha(inputs['objects']),
               'excluded_partitions': ['test', 'regression']})
@@ -120,7 +121,8 @@ class TrialPipeline:
         if not validation.get('tokenizer_verified') or validation.get('rejected_records') != 0 or validation.get('truncated_records') != 0:
             raise DataError('Tokenizer 准入失败。')
         expected_counts = {role: len(rows) for role, rows in inputs['partitions'].items()}
-        if validation.get('counts') != expected_counts or validation.get('training_records_expanded') != expected_counts['train']*10:
+        expanded = expanded_training_count(inputs['partitions']['train'], [obj['id'] for obj in inputs['objects']])
+        if validation.get('counts') != expected_counts or validation.get('training_records_expanded') != expanded:
             raise DataError('完整对象训练展开覆盖不匹配。')
         objects = [obj['id'] for obj in inputs['objects']]
         cases, data_sha = inputs['partitions']['validation'], inputs['partition_sha256']['validation']

@@ -30,13 +30,15 @@ class FakeBackend:
         objects = [obj['id'] for obj in payload['objects']]
         def data(role):
             return [json.loads(line) for line in (work/'data'/(role+'.jsonl')).read_text().splitlines()]
+        def expanded():
+            return sum((len(row['questions'])+4)//5 for row in data('train'))
         if operation in ('validate', 'validate-evaluation'):
             if operation == 'validate-evaluation':
                 return {'runtime': self.runtime(), 'tokenizer_verified': True, 'test_records': len(data('test')),
                         'rejected_records': 0, 'truncated_records': 0}
             return {'runtime': self.runtime(), 'tokenizer_verified': True, 'rejected_records': 0, 'truncated_records': 0,
                     'counts': {role: len(data(role)) for role in ('train', 'calibration', 'validation')},
-                    'training_records_expanded': len(data('train'))*10}
+                    'training_records_expanded': expanded()}
         if operation=='validate-baseline':
             output=work/'baseline';output.mkdir()
             (output/'head.pt').write_bytes(b'synthetic baseline head; not a model')
@@ -48,8 +50,8 @@ class FakeBackend:
             output = work/('smoke' if stage == 'SMOKE' else 'candidate')
             output.mkdir()
             metrics = {'device': 'cuda', 'rejected_records': 0, 'truncated_records': 0, 'optimizer_steps': 1,
-                       'records_seen': len(data('train'))*10*payload['config']['parameters']['epochs'],
-                       'requested_records': len(data('train'))*10*payload['config']['parameters']['epochs'],
+                       'records_seen': expanded()*payload['config']['parameters']['epochs'],
+                       'requested_records': expanded()*payload['config']['parameters']['epochs'],
                        'grad_norm': [{'mean': 1., 'max': 1.}], 'peak_device_bytes': 1}
             write(output/'adapter_config.json', {'r': 16, 'base_model_name_or_path': model['base']})
             write(output/'training_config.json', {'base_revision': model['base_revision']})
@@ -62,7 +64,7 @@ class FakeBackend:
         if operation == 'benchmark':
             rows, lines = [], []
             for row in data(payload['data_role']):
-                probabilities = {qid: {'false': .75, 'true': .25} for qid in objects}
+                probabilities = {qid: {'false': .75, 'true': .25} for qid in row['questions']}
                 lines.append({'id': row['_meta']['id'], 'prediction': {'probabilities': probabilities, 'latency_ms': 1.}})
                 for qid, question in row['questions'].items():
                     rows.append({'id': row['_meta']['id'], 'question': qid, 'type': 'noul', 'label': int(question['label']),
@@ -96,6 +98,6 @@ class FakeBackend:
                     'policy_sha256': {role: file_sha(work/'policy'/(role+'-calibration.json')) for role in ('baseline', 'candidate')}}
         if operation == 'load':
             role='baseline' if payload['mode']=='baseline' else 'candidate'
-            return {'loader_verified': True, 'objects_verified': 50, 'head_sha256': file_sha(work/role/'head.pt'),
+            return {'loader_verified': True, 'objects_verified': len(objects), 'head_sha256': file_sha(work/role/'head.pt'),
                     'weights_sha256': file_sha(work/role/'adapter_model.safetensors')}
         raise AssertionError(operation)

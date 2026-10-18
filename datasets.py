@@ -143,13 +143,19 @@ def normalize(rows):
             raise DataError(f'第 {i} 条 ID 无效或重复。')
         ids.add(case_id)
         key = identity(text)
-        if key in texts and texts[key] != target:
+        scenario = row.get('scenario')
+        if 'scenario' in row and (not isinstance(scenario, str) or not scenario.strip() or len(scenario) > 100):
+            raise DataError('scenario 必须为 1～100 字符的业务场景名称。')
+        conflict_key = (scenario.strip() if scenario is not None else None, key)
+        if conflict_key in texts and texts[conflict_key] != target:
             raise DataError(f'第 {i} 条与其他相同文本的标签冲突。')
-        texts[key] = target
+        texts[conflict_key] = target
         group_id = row.get('group_id', metadata.get('group_id', key))
         if not isinstance(group_id, str) or not group_id:
             raise DataError('group_id 必须是非空字符串。')
         record = {'id': case_id, 'text': text.strip(), 'intents': target, 'group_id': group_id}
+        if 'scenario' in row:
+            record['scenario'] = scenario.strip()
         if metadata:
             record['source_metadata'] = metadata
         for field in GROUP_FIELDS[1:]:
@@ -192,6 +198,17 @@ def profile(rows):
 
 def fingerprint(rows):
     return hashlib.sha256(json.dumps(rows, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+
+
+def question_ids(row, object_ids):
+    """Only explicitly annotated Noul questions count; arrays denote complete labels."""
+    if row.get('questions') is not None:
+        return [key for key in object_ids if key in row['questions']]
+    return list(object_ids)
+
+
+def expanded_training_count(rows, object_ids, group_size=5):
+    return sum((len(question_ids(row, object_ids)) + group_size - 1) // group_size for row in rows)
 
 
 def grouped_rows(rows):

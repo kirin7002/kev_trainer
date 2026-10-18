@@ -29,7 +29,8 @@ class BaselinePipeline(TrialPipeline):
         for role,rows in inputs['partitions'].items():
             if fingerprint(rows)!=inputs['partition_sha256'][role]: raise DataError('基线输入哈希不匹配。')
             path=work/'data'/(role+'.jsonl');path.parent.mkdir(exist_ok=True)
-            path.write_text(''.join(json.dumps(row,ensure_ascii=False)+'\n' for row in system_one(rows,{'objects':inputs['objects']},role)))
+            path.write_text(''.join(json.dumps(row,ensure_ascii=False)+'\n' for row in system_one(
+                rows,{'objects':inputs['objects'], **config.get('task_policy', {})},role)))
         payload={'work':str(work.resolve()),'mode':'baseline','config':config,'objects':inputs['objects']}
         validation=self.stage('BASELINE_VALIDATING','validate-baseline',payload)
         runtime=validation['runtime'];real=self.backend.mode=='cuda'
@@ -56,7 +57,7 @@ class BaselinePipeline(TrialPipeline):
         self.check_calibration(policy)
         served=benchmark('BASELINE_SYSTEM','validation',False)
         loader=self.stage('BASELINE_LOADING','load',payload)
-        if (not loader.get('loader_verified') or loader.get('objects_verified')!=50
+        if (not loader.get('loader_verified') or loader.get('objects_verified')!=len(objects)
                 or loader.get('head_sha256')!=file_sha(work/'baseline/head.pt')
                 or loader.get('weights_sha256')!=file_sha(work/'baseline/adapter_model.safetensors')):
             raise DataError('基线当前加载器回执不匹配。')
