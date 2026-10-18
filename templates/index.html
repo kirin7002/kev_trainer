@@ -157,6 +157,9 @@ ul.tight li{margin:3px 0}
 .pill-tabs{display:flex;gap:6px;flex-wrap:wrap}
 .pill-tabs button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;font-size:12.5px;color:var(--muted)}
 .pill-tabs button.active{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}
+.evaluation-tabs{display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:16px}
+.evaluation-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 16px;color:var(--muted)}
+.evaluation-tabs button.active{border-bottom-color:var(--green);color:var(--green-dark);font-weight:600}
 /* mobile */
 .mobile-head{display:none}
 @media (max-width:860px){
@@ -272,6 +275,9 @@ ul.tight li{margin:3px 0}
               <label class="field"><span>实验名称 *</span>
                 <input type="text" id="ex-name" maxlength="100" placeholder="例如：智能家居 0.8B 第一次微调" required>
               </label>
+              <label class="field"><span>业务场景（独立实验，可选）</span>
+                <input type="text" id="ex-scope" maxlength="100" placeholder="例如：车端，或 App 远程控制">
+              </label>
               <label class="field"><span>训练集 *</span>
                 <select id="ex-train" required></select>
               </label>
@@ -287,6 +293,12 @@ ul.tight li{margin:3px 0}
               <label class="field"><span>优化目标</span>
                 <input type="text" id="ex-goal" maxlength="1000" value="优先提高多对象整句准确率">
               </label>
+              <label class="field"><span>标签判断规则（可选，每行：标签名=判断规则）</span>
+                <textarea id="ex-labels" rows="3" placeholder="window=文本是否提及车窗？"></textarea>
+              </label>
+              <label class="field"><span>选中标签的概率阈值</span>
+                <input type="number" id="ex-threshold" min="0" max="1" step="0.01" value="0.5" required>
+              </label>
               <label class="field"><span>补充说明（给 Claude Code 的数据背景、约束等）</span>
                 <textarea id="ex-notes" rows="4" maxlength="3000" placeholder="例如：标签来自智能家居指令，多对象句约占 20%…"></textarea>
               </label>
@@ -300,6 +312,7 @@ ul.tight li{margin:3px 0}
             </div>
           </div>
           <div class="banner blue">训练集与测试集不能包含相同文本或分组；训练集至少需要两个独立文本组才能留出验证集。</div>
+          <label class="field"><span><input type="checkbox" id="ex-complete-labels" required> 标签数组为完整标注；Noul 样本只评测明确标注的问题，不将缺失视为否。</span></label>
           <button class="btn" id="ex-submit" type="submit">创建实验</button>
         </form>
       </div>
@@ -455,6 +468,7 @@ var state = {
   rsExpId: null,
   rsDetail: null,
   rsReport: null,
+  rsSplit: 'validation',
   caseFilter: 'wrong'
 };
 
@@ -696,14 +710,27 @@ document.getElementById('exp-form').addEventListener('submit', async function (e
   var btn = document.getElementById('ex-submit');
   var body = {
     name: document.getElementById('ex-name').value.trim(),
+    business_scope: document.getElementById('ex-scope').value.trim(),
     train_dataset_id: document.getElementById('ex-train').value,
     test_dataset_id: document.getElementById('ex-test').value,
     model_id: document.getElementById('ex-model').value,
+    decision_threshold: Number(document.getElementById('ex-threshold').value),
     goal: document.getElementById('ex-goal').value.trim() || '优先提高多对象整句准确率',
     notes: document.getElementById('ex-notes').value,
     max_training_minutes: parseInt(document.getElementById('ex-minutes').value, 10),
     claude_budget_usd: parseFloat(document.getElementById('ex-budget').value)
   };
+  body.label_definitions = {};
+  var labelLines = document.getElementById('ex-labels').value.split('\n');
+  for (var line of labelLines) {
+    if (!line.trim()) continue;
+    var separator = line.indexOf('=');
+    var key = line.slice(0, separator).trim(), rule = line.slice(separator + 1).trim();
+    if (separator < 1 || !rule || Object.prototype.hasOwnProperty.call(body.label_definitions, key)) {
+      toast('每行需填写唯一的“标签名=判断规则”。', 'error'); return;
+    }
+    Object.defineProperty(body.label_definitions, key, { value: rule, enumerable: true });
+  }
   if (!body.name) { toast('请填写实验名称。', 'error'); return; }
   if (!body.train_dataset_id || !body.test_dataset_id) { toast('请选择训练集和测试集。', 'error'); return; }
   if (!body.model_id) { toast('请选择基础模型。', 'error'); return; }
@@ -819,7 +846,7 @@ function renderExpDetail() {
 
   if (d.error) panel.appendChild(h('div', { class: 'banner red', text: '错误：' + d.error }));
   if (d.status === 'waiting_for_machine') {
-    panel.appendChild(h('div', { class: 'banner amber', text: '训练等待中：GPU 机器尚未接入。方案已就绪，接入机器后即可开始训练；平台不会模拟训练进度或结果。' }));
+    panel.appendChild(h('div', { class: 'banner amber', text: '训练尚未执行：GPU 机器与训练执行器尚未接入。' }));
   }
 
   var s = d.split || {};
@@ -828,13 +855,34 @@ function renderExpDetail() {
     kvItem('训练集', (d.train_dataset ? d.train_dataset.filename : '—') + ' · ' + shortSha(d.train_dataset && d.train_dataset.sha256)),
     kvItem('测试集（隔离）', (d.test_dataset ? d.test_dataset.filename : '—') + ' · ' + shortSha(d.test_dataset && d.test_dataset.sha256)),
     kvItem('优化目标', d.goal || '—'),
+    kvItem('业务场景', d.business_scope || '未限定'),
     kvItem('最大训练时长', (d.max_training_minutes || '—') + ' 分钟'),
     kvItem('方案预算', '$' + (d.claude_budget_usd === undefined ? '—' : d.claude_budget_usd))));
   if (d.notes) panel.appendChild(h('p', { style: 'font-size:13px;color:var(--muted);margin:10px 0 0' }, '补充说明：' + d.notes));
+  if (d.evaluation_protocol && d.evaluation_protocol.coverage_warnings.length) panel.appendChild(
+    h('div', { class: 'banner amber', text: d.evaluation_protocol.coverage_warnings.join(' ') }));
 
   /* 操作区 */
   var actions = h('div', { class: 'btnrow', style: 'margin-top:14px' });
-  var canPlan = ['draft', 'failed', 'cancelled', 'plan_ready', 'interrupted', 'waiting_for_machine'].indexOf(d.status) >= 0;
+  if (d.evaluation_protocol) {
+    panel.appendChild(h('div', { class: 'kv' },
+      kvItem('评测协议', shortSha(d.protocol_sha256)),
+      kvItem('固定阈值', String(d.evaluation_protocol.decision.threshold)),
+      kvItem('验证基线', d.evaluations.validation.baseline ? '已导入（外部预测）' : '待评测'),
+      kvItem('最终候选', d.final_candidate ? d.final_candidate.model : '未锁定')));
+    var baselineBtn = h('button', { class: 'btn ghost' }, '验证集基线与对比');
+    baselineBtn.addEventListener('click', function () {
+      state.rsSplit = 'validation'; state.rsExpId = d.id; state.rsDetail = null;
+      switchView('results'); selectResultsExp(d.id);
+    });
+    actions.appendChild(baselineBtn);
+    ['manifest.json', 'training.jsonl', 'validation.jsonl'].forEach(function (name) {
+      actions.appendChild(h('a', { class: 'btn ghost sm',
+        href: '/api/experiments/' + encodeURIComponent(d.id) + '/native-training/' + name,
+        download: name }, '下载 ' + name));
+    });
+  }
+  var canPlan = !d.final_candidate && ['draft', 'failed', 'cancelled', 'plan_ready', 'interrupted', 'waiting_for_machine'].indexOf(d.status) >= 0;
   if (canPlan) {
     var planBtn = h('button', { class: 'btn' }, d.plan ? '重新生成方案' : '生成方案');
     planBtn.addEventListener('click', async function () {
@@ -860,8 +908,8 @@ function renderExpDetail() {
     actions.appendChild(cancelBtn);
     actions.appendChild(h('span', { style: 'font-size:12.5px;color:var(--muted)', text: '方案生成中，日志每 2.5 秒自动刷新…' }));
   }
-  if (d.plan && d.status !== 'planning' && d.status !== 'cancelling') {
-    var trainBtn = h('button', { class: 'btn ghost' }, '开始训练');
+  if ((d.plan || d.evaluation_protocol) && !d.final_candidate && d.status !== 'planning' && d.status !== 'cancelling') {
+    var trainBtn = h('button', { class: 'btn ghost', disabled: d.evaluations && !d.evaluations.validation.baseline }, '开始训练');
     trainBtn.addEventListener('click', async function () {
       busy(trainBtn, true, '提交中…');
       try {
@@ -872,7 +920,7 @@ function renderExpDetail() {
     });
     actions.appendChild(trainBtn);
     actions.appendChild(h('span', { style: 'font-size:12px;color:var(--muted)', text: 'GPU 未接入时将进入“等待机器”状态，不会开始训练。' }));
-    actions.appendChild(h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/plan.json', download: 'plan.json' }, '下载 plan.json'));
+    if (d.plan) actions.appendChild(h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/plan.json', download: 'plan.json' }, '下载 plan.json'));
   }
   panel.appendChild(actions);
   box.appendChild(panel);
@@ -963,15 +1011,22 @@ function refreshResultsOptions() {
   else if (!sel.value) renderResultsBody();
 }
 async function selectResultsExp(id) {
+  if (state.rsExpId !== id) state.rsSplit = 'validation';
   state.rsExpId = id || null;
   state.rsDetail = null;
   state.rsReport = null;
   state.caseFilter = 'wrong';
   if (!id) { renderResultsBody(); return; }
   try {
-    state.rsDetail = await api('/api/experiments/' + encodeURIComponent(id));
+    var detail = await api('/api/experiments/' + encodeURIComponent(id));
+    if (state.rsExpId !== id) return;
+    state.rsDetail = detail;
+    if (!detail.evaluations) state.rsSplit = 'test';
+    var split = state.rsSplit;
     try {
-      state.rsReport = await api('/api/experiments/' + encodeURIComponent(id) + '/report');
+      var loaded = await api('/api/experiments/' + encodeURIComponent(id) + '/report?split=' + split);
+      if (state.rsExpId !== id || state.rsSplit !== split) return;
+      state.rsReport = loaded;
     } catch (e) { state.rsReport = null; }
   } catch (e) {
     toast(e.message, 'error');
@@ -986,22 +1041,60 @@ function renderResultsBody() {
     box.appendChild(h('div', { class: 'panel' }, emptyBox('未选择实验', '选择一个实验后，可查看其测试集指纹、导入预测并生成评测报告。')));
     return;
   }
-  var sha = d.test_dataset ? d.test_dataset.sha256 : '';
+  var split = state.rsSplit;
+  var evaluation = d.evaluations ? d.evaluations[split] : null;
+  var sha = evaluation ? evaluation.sha256 : (d.test_dataset ? d.test_dataset.sha256 : '');
+  var splitName = split === 'validation' ? '验证集' : '最终测试集';
+  if (d.evaluations) {
+    var tabs = h('div', { class: 'evaluation-tabs', role: 'tablist' });
+    [['validation', '验证集'], ['test', '最终测试集']].forEach(function (pair) {
+      var tab = h('button', { role: 'tab', 'aria-selected': String(split === pair[0]), class: split === pair[0] ? 'active' : '', text: pair[1] });
+      tab.addEventListener('click', function () { state.rsSplit = pair[0]; selectResultsExp(d.id); });
+      tabs.appendChild(tab);
+    });
+    box.appendChild(tabs);
+    if (evaluation.locked) {
+      box.appendChild(h('div', { class: 'banner amber', text: '最终测试集尚未开放：请先完成验证集对比并锁定最终候选。' }));
+      return;
+    }
+    if (split === 'validation' && !d.final_candidate && evaluation.report_ready) {
+      var finalizeBtn = h('button', { class: 'btn', style: 'margin-bottom:16px' }, '锁定此候选，开放最终测试');
+      finalizeBtn.addEventListener('click', async function () {
+        busy(finalizeBtn, true, '锁定中…');
+        try { await api('/api/experiments/' + encodeURIComponent(d.id) + '/finalize', { method: 'POST' }); await selectResultsExp(d.id); }
+        catch (e) { toast(e.message, 'error'); busy(finalizeBtn, false); }
+      });
+      box.appendChild(finalizeBtn);
+    }
+    if (d.final_candidate) box.appendChild(h('div', { class: 'banner blue', text: '最终候选已锁定：' + d.final_candidate.model }));
+  }
 
   /* 测试集信息与预测格式 */
   var infoPanel = h('div', { class: 'panel' });
-  infoPanel.appendChild(h('h3', { text: '测试集与导入格式' }));
+  infoPanel.appendChild(h('h3', { text: splitName + '与评测协议' }));
   infoPanel.appendChild(h('div', { class: 'kv', style: 'margin-bottom:8px' },
-    kvItem('测试集', d.test_dataset ? d.test_dataset.filename : '—'),
-    kvItem('样本数', String(d.split ? d.split.test : '—'))));
+    kvItem('阶段', splitName),
+    kvItem('样本数', String(evaluation ? evaluation.count : (d.split ? d.split.test : '—')))));
+  if (evaluation) {
+    infoPanel.appendChild(h('div', { class: 'kv' },
+      kvItem('协议 SHA-256', d.protocol_sha256),
+      kvItem('基线检查点', d.model.checkpoint),
+      kvItem('选中阈值', String(d.evaluation_protocol.decision.threshold)),
+      kvItem('基线匹配标识', evaluation.baseline_cache_key)));
+    infoPanel.appendChild(h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/evaluations/' + split, download: split + '-inputs.json' }, '下载' + splitName + '推理输入'));
+    if (evaluation.baseline_summary) infoPanel.appendChild(h('div', { class: 'kv', style: 'margin-top:12px' },
+      kvItem('基线完整匹配率', pct(evaluation.baseline_summary.accuracy)),
+      kvItem('基线 F1', pct(evaluation.baseline_summary.f1))));
+  }
   infoPanel.appendChild(h('div', { style: 'margin-bottom:8px' },
-    h('span', { style: 'font-size:12.5px;color:var(--muted);font-weight:600', text: '测试集 SHA-256（预测文件必须携带同一值）：' }),
+    h('span', { style: 'font-size:12.5px;color:var(--muted);font-weight:600', text: splitName + ' SHA-256：' }),
     h('div', { class: 'mono', style: 'word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin-top:4px', text: sha || '—' })));
-  infoPanel.appendChild(h('p', { class: 'hint', text: '预测 JSON 格式：dataset_sha256 必填且需与上面一致；predictions 必须覆盖全部测试样本，不能跳过失败样本；intents 为字符串数组（无对象则为空数组）；text 可选（若提供必须与测试样本一致）；latency_ms 可选（非负数值或 null）；runtime 可选（含 device/backend/dtype 字符串，用于判断两侧耗时是否可比）。' }));
+  infoPanel.appendChild(h('p', { class: 'hint', text: '预测文件须覆盖当前评测集的全部样本，并使用同一问题定义及阈值。基线填写固定检查点；候选填写实际检查点版本。外部文件的模型及推理配置由导入者声明，平台未执行核验。' }));
   infoPanel.appendChild(h('pre', { class: 'code', text:
 '{\n' +
 '  "dataset_sha256": "' + (sha || '<测试集 SHA-256>') + '",\n' +
-'  "model": "kev-0.8b-v1.0 @ 原始检查点",\n' +
+(evaluation ? '  "protocol_sha256": "' + d.protocol_sha256 + '",\n  "split": "' + split + '",\n' : '') +
+'  "model": "' + (evaluation ? d.model.checkpoint : 'your-checkpoint') + '",\n' +
 '  "runtime": {"device": "NVIDIA A100", "backend": "vllm", "dtype": "bf16"},\n' +
 '  "predictions": [\n' +
 '    {"id": "case-00001", "text": "把客厅的灯调暗", "intents": ["灯"], "latency_ms": 12.3},\n' +
@@ -1016,10 +1109,13 @@ function renderResultsBody() {
   impPanel.appendChild(h('div', { class: 'banner amber' },
     h('b', { text: '来源说明：' }),
     document.createTextNode('baseline / candidate 预测文件均来自平台外部（例如你在其他环境自行推理的结果）。导入并评测不代表本平台已训练或部署过任何模型；GPU 未接入时平台无法训练。')));
-  var preds = d.predictions || {};
+  var preds = evaluation || d.predictions || {};
   var grid = h('div', { class: 'grid2' });
   [['baseline', '原模型（baseline）预测'], ['candidate', '候选模型（candidate）预测']].forEach(function (pair) {
-    grid.appendChild(importCard(d.id, pair[0], pair[1], !!preds[pair[0]]));
+    var disabled = evaluation && ((split === 'validation' && !!d.final_candidate) ||
+      (pair[0] === 'baseline' && preds.baseline) || (split === 'test' && !!preds[pair[0]]) ||
+      (pair[0] === 'candidate' && !preds.baseline));
+    grid.appendChild(importCard(d.id, pair[0], pair[1], !!preds[pair[0]], split, disabled));
   });
   impPanel.appendChild(grid);
   if (preds.baseline && preds.candidate && !state.rsReport) {
@@ -1027,7 +1123,7 @@ function renderResultsBody() {
     var refreshBtn = h('button', { class: 'btn ghost sm' }, '刷新报告');
     refreshBtn.addEventListener('click', async function () {
       busy(refreshBtn, true, '加载…');
-      try { state.rsReport = await api('/api/experiments/' + encodeURIComponent(d.id) + '/report'); renderResultsBody(); }
+      try { state.rsReport = await api('/api/experiments/' + encodeURIComponent(d.id) + '/report?split=' + split); renderResultsBody(); }
       catch (e) { toast(e.message, 'error'); }
       finally { busy(refreshBtn, false); }
     });
@@ -1043,21 +1139,21 @@ function renderResultsBody() {
   }
   box.appendChild(renderReport(d, state.rsReport));
 }
-function importCard(expId, kind, title, imported) {
+function importCard(expId, kind, title, imported, split, disabled) {
   var card = h('div', { style: 'border:1px solid var(--line);border-radius:8px;padding:12px' });
   card.appendChild(h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px' },
     h('b', { text: title }),
     imported ? h('span', { class: 'tag green', text: '已导入' }) : h('span', { class: 'tag', text: '未导入' })));
-  var fileInput = h('input', { type: 'file', accept: '.json,application/json' });
+  var fileInput = h('input', { type: 'file', accept: '.json,application/json', disabled: disabled });
   card.appendChild(fileInput);
-  var btn = h('button', { class: 'btn sm', style: 'margin-top:8px' }, imported ? '重新导入并评测' : '导入并评测');
+  var btn = h('button', { class: 'btn sm', style: 'margin-top:8px', disabled: disabled }, disabled && imported ? '结果已锁定' : (imported ? '重新导入并评测' : '导入并评测'));
   btn.addEventListener('click', async function () {
     if (!fileInput.files.length) { toast('请先选择预测 JSON 文件。', 'error'); return; }
     var fd = new FormData();
     fd.append('file', fileInput.files[0]);
     busy(btn, true, '导入中…');
     try {
-      var r = await api('/api/experiments/' + encodeURIComponent(expId) + '/predictions/' + kind, { method: 'POST', body: fd });
+      var r = await api('/api/experiments/' + encodeURIComponent(expId) + '/predictions/' + kind + '?split=' + split, { method: 'POST', body: fd });
       toast('已导入 ' + r.imported + ' 条预测' + (r.report_ready ? '，报告已生成。' : '。'), 'success');
       await selectResultsExp(expId);
     } catch (e) { toast(e.message, 'error'); busy(btn, false); }
@@ -1073,6 +1169,7 @@ function metricRow(name, b, c, fmt) {
     h('td', { class: 'mono', text: fmt(c) }));
 }
 function renderReport(d, report) {
+  var prefix = report.split === 'validation' ? 'validation-' : '';
   var panel = h('div', { class: 'panel' });
   panel.appendChild(h('h3', { text: '评测报告' }));
   panel.appendChild(h('div', { class: 'banner amber' },
@@ -1096,8 +1193,23 @@ function renderReport(d, report) {
     h('div', { class: 'card' }, h('div', { class: 'k', text: '整句准确率（候选）' }), h('div', { class: 'v', text: pct(c.overall.accuracy) }), h('div', { class: 's', text: c.overall.correct + ' / ' + c.overall.total })),
     h('div', { class: 'card' }, h('div', { class: 'k', text: '准确率变化' }), deltaEl, h('div', { class: 's', text: '候选 − 原模型' }),),
     h('div', { class: 'card' }, h('div', { class: 'k', text: '改对 / 改错' }), h('div', { class: 'v' }, h('span', { class: 'delta-pos', text: String((report.improved_ids || []).length) }), document.createTextNode(' / '), h('span', { class: 'delta-neg', text: String((report.regressed_ids || []).length) }))),
-    h('div', { class: 'card' }, h('div', { class: 'k', text: '测试集 SHA-256' }), h('div', { class: 's mono', style: 'word-break:break-all;margin-top:4px', text: report.dataset_sha256 }))));
+    h('div', { class: 'card' }, h('div', { class: 'k', text: '评测集 SHA-256' }), h('div', { class: 's mono', style: 'word-break:break-all;margin-top:4px', text: report.dataset_sha256 }))));
   panel.appendChild(h('p', { class: 'hint' }, '原模型：' + (report.baseline_model || '—') + ' · 候选模型：' + (report.candidate_model || '—')));
+  var scenarios = Object.keys(b.by_scenario || {});
+  if (scenarios.length && !(scenarios.length === 1 && scenarios[0] === '未指定')) {
+    var scenarioRows = h('tbody');
+    scenarios.forEach(function (name) {
+      var before = b.by_scenario[name], after = c.by_scenario[name];
+      scenarioRows.appendChild(h('tr', null,
+        h('td', { text: name }), h('td', { text: String(before.total) }),
+        h('td', { text: pct(before.accuracy) }), h('td', { text: pct(after.accuracy) }),
+        h('td', { text: pct(before.f1) }), h('td', { text: pct(after.f1) }),
+        h('td', null, deltaTag(after.accuracy - before.accuracy))));
+    });
+    panel.appendChild(h('div', { class: 'section-title', text: '按业务场景验收' }));
+    panel.appendChild(h('div', { class: 'tablewrap' }, h('table', { class: 'data', style: 'min-width:660px' },
+      h('thead', null, h('tr', null, ['业务', '样本数', '基线准确率', '候选准确率', '基线 F1', '候选 F1', '准确率变化'].map(function (name) { return h('th', { text: name }); }))), scenarioRows)));
+  }
 
   /* 总体指标表 */
   panel.appendChild(h('div', { class: 'section-title', text: '总体指标' }));
@@ -1289,9 +1401,9 @@ function renderReport(d, report) {
   drawTable();
 
   panel.appendChild(h('div', { class: 'btnrow', style: 'margin-top:14px' },
-    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/report.json', download: 'report.json' }, '下载 report.json'),
-    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/baseline-predictions.json', download: 'baseline-predictions.json' }, '下载 baseline 预测'),
-    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/candidate-predictions.json', download: 'candidate-predictions.json' }, '下载 candidate 预测')));
+    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/' + prefix + 'report.json', download: prefix + 'report.json' }, '下载报告'),
+    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/' + prefix + 'baseline-predictions.json', download: prefix + 'baseline-predictions.json' }, '下载 baseline 预测'),
+    h('a', { class: 'btn ghost sm', href: '/api/experiments/' + encodeURIComponent(d.id) + '/artifacts/' + prefix + 'candidate-predictions.json', download: prefix + 'candidate-predictions.json' }, '下载 candidate 预测')));
   return panel;
 }
 function deltaTag(x) {

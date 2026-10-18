@@ -82,6 +82,11 @@ def normalize(rows):
         if not isinstance(group_id, str) or not group_id:
             raise DataError('group_id 必须是非空字符串。')
         record = {'id': case_id, 'text': text.strip(), 'intents': target, 'group_id': group_id}
+        if 'scenario' in row:
+            scenario = row['scenario']
+            if not isinstance(scenario, str) or not scenario.strip() or len(scenario) > 100:
+                raise DataError('scenario 必须为 1～100 字符的业务场景名称。')
+            record['scenario'] = scenario.strip()
         if questions is not None:
             # 保留原始 questions（含 instructions/criteria 与显式 false 标签），供后续真实训练使用。
             record['questions'] = questions

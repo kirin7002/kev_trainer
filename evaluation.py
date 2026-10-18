@@ -19,7 +19,7 @@ def percentile(values, p):
 
 def validate_predictions(payload, cases, sha):
     if not isinstance(payload, dict) or payload.get('dataset_sha256') != sha:
-        raise DataError('dataset_sha256 必须与当前实验的测试集一致。')
+        raise DataError('dataset_sha256 必须与当前实验的评测集一致。')
     records = payload.get('predictions')
     if not isinstance(records, list):
         raise DataError('缺少 predictions 数组。')
@@ -28,9 +28,9 @@ def validate_predictions(payload, cases, sha):
     for row in records:
         if (not isinstance(row, dict) or not isinstance(row.get('id'), str)
                 or row['id'] not in expected or row['id'] in result):
-            raise DataError('预测 ID 缺失、重复或不属于当前测试集。')
+            raise DataError('预测 ID 缺失、重复或不属于当前评测集。')
         if 'text' in row and row['text'] != expected[row['id']]['text']:
-            raise DataError('预测文本与测试样本不一致。')
+            raise DataError('预测文本与评测样本不一致。')
         if 'intents' not in row:
             raise DataError('预测结果缺少 intents。')
         latency = row.get('latency_ms')
@@ -38,7 +38,7 @@ def validate_predictions(payload, cases, sha):
             raise DataError('latency_ms 必须是非负有限数值或 null。')
         result[row['id']] = {'intents': labels(row['intents']), 'latency_ms': latency}
     if set(result) != set(expected):
-        raise DataError('预测必须覆盖全部测试样本，不能跳过错误或失败的样本。')
+        raise DataError('预测必须覆盖全部评测样本，不能跳过错误或失败的样本。')
     runtime = payload.get('runtime')
     if runtime is not None and (not isinstance(runtime, dict) or
             any(not isinstance(runtime.get(k), str) or not runtime[k] for k in ('device', 'backend', 'dtype'))):
@@ -78,11 +78,14 @@ def evaluate(cases, predictions):
         expected_set, actual_set = set(case['intents']), set(actual['intents'])
         rows.append({'id': case['id'], 'text': case['text'], 'expected': expected_set, 'actual': actual_set,
             'passed': expected_set == actual_set, 'latency_ms': actual['latency_ms'],
+            'scenario': case.get('scenario', '未指定'),
             'group': 'unknown' if not expected_set else 'single' if len(expected_set) == 1 else 'multi'})
     result = {'overall': summarize(rows),
         'groups': {name: summarize([r for r in rows if r['group'] == name]) for name in ('single', 'multi', 'unknown')},
         'by_object_count': {str(n): summarize([r for r in rows if len(r['expected']) == n])
                            for n in sorted({len(r['expected']) for r in rows})},
+        'by_scenario': {name: summarize([r for r in rows if r['scenario'] == name])
+                        for name in sorted({r['scenario'] for r in rows})},
         'cases': [{**r, 'expected': sorted(r['expected']), 'actual': sorted(r['actual']),
                    'missing': sorted(r['expected']-r['actual']), 'extra': sorted(r['actual']-r['expected'])} for r in rows]}
     return result

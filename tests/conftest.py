@@ -94,3 +94,13 @@ def experiment(client, upload):
         'model_id': 'kev-0.8b-v1.0'})
     assert created.status_code == 201, created.text
     return {'train': train_meta, 'test': test_meta, 'meta': created.json()}
+
+
+@pytest.fixture()
+def legacy_experiment(experiment, app_instance):
+    """Existing pre-protocol experiments keep their test-import workflow."""
+    meta = dict(experiment['meta'])
+    meta.pop('protocol_sha256')
+    meta.pop('final_candidate')
+    app_instance.state.experiments.save(meta)
+    return {**experiment, 'meta': meta}

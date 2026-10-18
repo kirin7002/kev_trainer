@@ -187,13 +187,20 @@ def test_experiment_list_and_detail(client, experiment):
 def test_train_without_plan_409(client, experiment):
     response = client.post(f"/api/experiments/{experiment['meta']['id']}/train")
     assert response.status_code == 409
-    assert '方案' in response.json()['detail']
+    assert '基线' in response.json()['detail']
 
 
 def test_train_with_plan_offline_sets_waiting_for_machine(client, app_instance, experiment):
     exp_id = experiment['meta']['id']
     store = app_instance.state.store
     store.write(store.path('runs', exp_id) / 'plan.json', {'plan': {}})
+    assert client.post(f'/api/experiments/{exp_id}/train').status_code == 409
+    inputs = client.get(f'/api/experiments/{exp_id}/evaluations/validation').json()
+    payload = {'split': 'validation', 'dataset_sha256': inputs['dataset_sha256'],
+        'protocol_sha256': inputs['protocol_sha256'], 'model': inputs['baseline_model'],
+        'predictions': [{'id': row['id'], 'intents': []} for row in inputs['records']]}
+    assert client.post(f'/api/experiments/{exp_id}/predictions/baseline?split=validation',
+        files={'file': ('b.json', json.dumps(payload), 'application/json')}).status_code == 200
     response = client.post(f'/api/experiments/{exp_id}/train')
     assert response.status_code == 409
     assert 'GPU' in response.json()['detail'] or '机器' in response.json()['detail']
@@ -216,7 +223,8 @@ def import_payload(sha, preds, model='m', runtime=None):
     return json.dumps(body).encode()
 
 
-def test_predictions_import_flow_and_report(client, experiment):
+def test_legacy_predictions_import_flow_and_report(client, legacy_experiment):
+    experiment = legacy_experiment
     exp_id = experiment['meta']['id']
     sha = experiment['test']['sha256']
     baseline = {'te-1': [], 'te-2': ['window'], 'te-3': []}   # accuracy 1/3
@@ -242,7 +250,8 @@ def test_predictions_import_flow_and_report(client, experiment):
     assert any('外部预测' in e['message'] for e in detail['events'])
 
 
-def test_predictions_import_rejections(client, experiment):
+def test_legacy_predictions_import_rejections(client, legacy_experiment):
+    experiment = legacy_experiment
     exp_id = experiment['meta']['id']
     sha = experiment['test']['sha256']
     url = f'/api/experiments/{exp_id}/predictions/baseline'

@@ -291,3 +291,20 @@ def test_fingerprint_of_cases_matches_payload_sha_flow():
     validate_predictions(payload(sha=sha), CASES, sha)  # accepted
     with pytest.raises(DataError):
         validate_predictions(payload(sha=sha), CASES, 'other')
+
+
+def test_per_business_metrics_do_not_hide_regressions_in_total():
+    cases = normalize([
+        {'id': 'car', 'text': 'car request', 'intents': ['window'], 'scenario': 'car'},
+        {'id': 'app', 'text': 'app request', 'intents': ['window'], 'scenario': 'app'},
+    ])
+    sha = fingerprint(cases)
+    def predictions(correct_id):
+        return validate_predictions({'dataset_sha256': sha, 'predictions': [
+            {'id': case['id'], 'intents': ['window'] if case['id'] == correct_id else []}
+            for case in cases]}, cases, sha)
+    report = comparison(cases, predictions('car'), predictions('app'))
+    assert report['accuracy_delta'] == 0
+    assert report['baseline']['by_scenario']['car']['accuracy'] == 1
+    assert report['candidate']['by_scenario']['car']['accuracy'] == 0
+    assert report['candidate']['by_scenario']['app']['accuracy'] == 1

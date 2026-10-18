@@ -8,12 +8,14 @@ import threading
 import uuid
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 import claude_runner
 from datasets import DataError, assert_disjoint, fingerprint, normalize, parse_upload, profile, split_validation
-from evaluation import comparison, validate_predictions
+from evaluation import comparison, evaluate, validate_predictions
+from experiment_protocol import (baseline_cache_key, build_protocol, digest, native_records,
+    prediction_file, report_file, training_manifest, verify_protocol, verify_rows)
 from machine import get_machine_client
 from storage import Store
 
@@ -36,6 +38,9 @@ class ExperimentInput(BaseModel):
     notes: str = Field(default='', max_length=3000)
     max_training_minutes: int = Field(default=60, ge=5, le=1440)
     claude_budget_usd: float = Field(default=1, ge=0.1, le=20, allow_inf_nan=False)
+    label_definitions: dict[str, str] = Field(default_factory=dict, max_length=100)
+    decision_threshold: float = Field(default=0.5, ge=0, le=1, allow_inf_nan=False)
+    business_scope: str = Field(default='', max_length=100)
 
 
 class Experiments:
@@ -73,6 +78,8 @@ class Experiments:
     def plan(self, item_id):
         with self.lock:
             meta = self.load(item_id)
+            if meta.get('final_candidate'):
+                raise HTTPException(409, '最终候选已锁定，不能继续优化；调整方案请建立新实验。')
             if any(task[0].is_alive() for task in self.tasks.values()):
                 raise HTTPException(409, '已有方案任务正在运行，请等待或取消后重试。')
             if not claude_runner.binary_path():
@@ -89,6 +96,12 @@ class Experiments:
             directory = self.directory(item_id)
             training = self.store.read(directory / 'training.json')
             validation = self.store.read(directory / 'validation.json')
+            if meta.get('protocol_sha256'):
+                protocol = self.store.read(directory / 'protocol.json')
+                if protocol.get('sha256') != meta['protocol_sha256']:
+                    raise DataError('实验协议与元数据不一致。')
+                verify_rows(protocol, 'training', training)
+                verify_rows(protocol, 'validation', validation)
             # 上下文只包含训练/验证资料及其概况；最终测试集不进入 Claude 上下文。
             context = {'task': '根据输入资料提出 Kev 微调方案；不执行训练。',
                 'model': meta['model'], 'goal': meta['goal'], 'notes': meta['notes'],
@@ -96,6 +109,9 @@ class Experiments:
                 'training_profile': profile(training), 'validation_profile': profile(validation),
                 'training_examples': training[:30], 'validation_examples': validation[:20],
                 'labeling_rule': '只识别涉及的对象。否定、疑问中明确提及对象也计入；不解析动作。'}
+            if meta.get('protocol_sha256'):
+                context.update(business_scope=protocol['business_scope'], questions=protocol['questions'],
+                    labeling_rule='遵守固定问题定义和样本中的业务场景，不得修改评测协议。')
             self.store.write(directory / 'planning-context.json', context)
             workdir = self.store.root / 'agent-work' / item_id
             workdir.mkdir(parents=True, exist_ok=True)
@@ -147,6 +163,33 @@ def create_app(data_dir=None):
     app = FastAPI(title='Kev Trainer', lifespan=lifespan)
     app.state.store = store
     app.state.experiments = experiments
+
+    def evaluation_data(meta, split):
+        if split not in ('validation', 'test'):
+            raise DataError('评测阶段必须为 validation 或 test。')
+        directory = experiments.directory(meta['id'])
+        if not meta.get('protocol_sha256'):
+            if split != 'test':
+                raise HTTPException(409, '旧实验没有固定验证协议，请新建实验。')
+            return None, store.read(store.path('datasets', meta['test_dataset']['id']) / 'records.json')
+        protocol = store.read(directory / 'protocol.json')
+        verify_protocol(protocol)
+        if protocol['sha256'] != meta['protocol_sha256']:
+            raise DataError('实验协议与元数据不一致。')
+        cases = store.read(directory / (split + '.json'))
+        verify_rows(protocol, split, cases)
+        return protocol, cases
+
+    def load_report(meta, split):
+        protocol, _ = evaluation_data(meta, split)
+        directory = experiments.directory(meta['id'])
+        result = store.read(directory / report_file(split))
+        if protocol:
+            hashes = {kind: digest(store.read(directory / prediction_file(split, kind)))
+                      for kind in ('baseline', 'candidate')}
+            if result.get('prediction_sha256') != hashes or result.get('protocol_sha256') != protocol['sha256']:
+                raise HTTPException(409, '报告与当前预测不一致，请先完成同一评测集的对比。')
+        return result
 
     @app.middleware('http')
     async def local_access(request, call_next):
@@ -242,8 +285,17 @@ def create_app(data_dir=None):
         if train_meta['role'] != 'train' or test_meta['role'] != 'test':
             raise DataError('请分别选择训练集和测试集。')
         training, test = store.read(train_dir / 'records.json'), store.read(test_dir / 'records.json')
+        scope = body.business_scope.strip()
+        if scope:
+            if any(row.get('scenario', scope) != scope for row in training + test):
+                raise DataError('本实验的业务场景与样本不一致；不同业务请分别建立实验。')
+            training = [{**row, 'scenario': scope} for row in training]
+            test = [{**row, 'scenario': scope} for row in test]
         assert_disjoint(training, test)
         train, validation = split_validation(training)
+        protocol = build_protocol(MODEL_MAP[body.model_id], training,
+            {'training': train, 'validation': validation, 'test': test},
+            body.label_definitions, body.decision_threshold, scope)
         item_id = str(uuid.uuid4())
         directory = experiments.directory(item_id)
         meta = {'id': item_id, 'name': name, 'model': MODEL_MAP[body.model_id],
@@ -251,9 +303,12 @@ def create_app(data_dir=None):
             'split': {'train': len(train), 'validation': len(validation), 'test': len(test), 'seed': 42},
             'goal': body.goal, 'notes': body.notes, 'max_training_minutes': body.max_training_minutes,
             'claude_budget_usd': body.claude_budget_usd, 'status': 'draft',
-            'created_at': now(), 'updated_at': now(), 'events': [], 'error': None, 'report_revision': None}
+            'created_at': now(), 'updated_at': now(), 'events': [], 'error': None, 'report_revision': None,
+            'protocol_sha256': protocol['sha256'], 'final_candidate': None, 'business_scope': scope}
         store.write(directory / 'training.json', train)
         store.write(directory / 'validation.json', validation)
+        store.write(directory / 'test.json', test)
+        store.write(directory / 'protocol.json', protocol)
         experiments.save(meta)
         experiments.log(item_id, '实验已建立。最终测试集与训练/验证数据隔离。')
         return experiments.load(item_id)
@@ -268,7 +323,74 @@ def create_app(data_dir=None):
         directory = experiments.directory(item_id)
         meta['plan'] = store.read(directory / 'plan.json') if (directory / 'plan.json').exists() else None
         meta['predictions'] = {name: (directory / (name + '-predictions.json')).exists() for name in ('baseline', 'candidate')}
+        if meta.get('protocol_sha256'):
+            protocol, _ = evaluation_data(meta, 'validation')
+            meta['evaluation_protocol'] = protocol
+            meta['evaluations'] = {split: {
+                **protocol['splits'][split],
+                'baseline_cache_key': baseline_cache_key(protocol, split),
+                **{kind: (directory / prediction_file(split, kind)).exists() for kind in ('baseline', 'candidate')},
+                'report_ready': (directory / report_file(split)).exists(),
+                'locked': split == 'test' and not bool(meta.get('final_candidate'))}
+                for split in ('validation', 'test')}
+            for split, info in meta['evaluations'].items():
+                if info['baseline']:
+                    _, cases = evaluation_data(meta, split)
+                    info['baseline_summary'] = evaluate(cases,
+                        store.read(directory / prediction_file(split, 'baseline')))['overall']
         return meta
+
+    @app.post('/api/experiments/{item_id}/finalize')
+    def finalize(item_id: str):
+        with experiments.lock:
+            meta = experiments.load(item_id)
+            if not meta.get('protocol_sha256'):
+                raise HTTPException(409, '旧实验没有候选锁定流程，请新建实验。')
+            if meta['status'] in ('planning', 'cancelling', 'running'):
+                raise HTTPException(409, '请先结束当前任务。')
+            protocol, _ = evaluation_data(meta, 'validation')
+            directory = experiments.directory(item_id)
+            if meta.get('final_candidate'):
+                return meta['final_candidate']
+            if not (directory / report_file('validation')).exists():
+                raise HTTPException(409, '请先完成固定验证集上的基线与候选对比。')
+            load_report(meta, 'validation')
+            candidate = store.read(directory / prediction_file('validation', 'candidate'))
+            selected = {'model': candidate['model'], 'validation_predictions_sha256': digest(candidate),
+                'protocol_sha256': protocol['sha256'], 'selected_at': now()}
+            experiments.update(item_id, final_candidate=selected)
+            experiments.log(item_id, '最终候选已锁定，开放保留测试集；本实验不再接受验证集候选更新。')
+            return selected
+
+    @app.get('/api/experiments/{item_id}/evaluations/{split}')
+    def evaluation_input(item_id: str, split: str):
+        meta = experiments.load(item_id)
+        protocol, cases = evaluation_data(meta, split)
+        if protocol is None:
+            raise HTTPException(409, '旧实验没有固定评测输入，请新建实验。')
+        if split == 'test' and not meta.get('final_candidate'):
+            raise HTTPException(409, '请先在验证集选定并锁定最终候选。')
+        return {'split': split, 'dataset_sha256': protocol['splits'][split]['sha256'],
+            'protocol_sha256': protocol['sha256'], 'baseline_model': protocol['baseline']['checkpoint'],
+            'decision': protocol['decision'], 'records': native_records(cases, protocol['questions'], False)}
+
+    @app.get('/api/experiments/{item_id}/native-training/{name}')
+    def native_training(item_id: str, name: str):
+        meta = experiments.load(item_id)
+        protocol, _ = evaluation_data(meta, 'validation')
+        if protocol is None:
+            raise HTTPException(409, '旧实验没有固定问题定义，请新建实验。')
+        if name == 'manifest.json':
+            return training_manifest(protocol)
+        if name not in ('training.jsonl', 'validation.jsonl'):
+            raise HTTPException(404, '训练包仅包含训练与验证资料。')
+        split = name.removesuffix('.jsonl')
+        rows = store.read(experiments.directory(item_id) / (split + '.json'))
+        verify_rows(protocol, split, rows)
+        content = ''.join(json.dumps(row, ensure_ascii=False, allow_nan=False) + '\n'
+                          for row in native_records(rows, protocol['questions']))
+        return Response(content, media_type='application/x-ndjson',
+                        headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @app.post('/api/experiments/{item_id}/plan', status_code=202)
     def plan(item_id: str):
@@ -285,8 +407,15 @@ def create_app(data_dir=None):
         meta = experiments.load(item_id)
         if meta['status'] in ('planning', 'cancelling'):
             raise HTTPException(409, '请等待方案任务结束。')
-        if not (experiments.directory(item_id) / 'plan.json').exists():
+        if not meta.get('protocol_sha256') and not (experiments.directory(item_id) / 'plan.json').exists():
             raise HTTPException(409, '请先生成并校验训练方案。')
+        if meta.get('protocol_sha256'):
+            if meta.get('final_candidate'):
+                raise HTTPException(409, '最终候选已锁定，不能继续训练，请建立新实验。')
+            evaluation_data(meta, 'validation')
+            directory = experiments.directory(item_id)
+            if not (directory / prediction_file('validation', 'baseline')).exists():
+                raise HTTPException(409, '请先完成固定验证集上的基线评测。')
         machine = get_machine_client().check_connection()
         if not machine.connected:
             experiments.update(item_id, status='waiting_for_machine')
@@ -295,7 +424,7 @@ def create_app(data_dir=None):
         raise HTTPException(501, '远程训练执行器尚未实现。')
 
     @app.post('/api/experiments/{item_id}/predictions/{kind}')
-    async def predictions(item_id: str, kind: str, file: UploadFile = File(...)):
+    async def predictions(item_id: str, kind: str, split: str = 'test', file: UploadFile = File(...)):
         if kind not in ('baseline', 'candidate'):
             raise DataError('预测类型必须为 baseline 或 candidate。')
         meta = experiments.load(item_id)
@@ -306,29 +435,69 @@ def create_app(data_dir=None):
             value = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise DataError('预测文件必须为有效 JSON。')
-        cases = store.read(store.path('datasets', meta['test_dataset']['id']) / 'records.json')
-        validated = validate_predictions(value, cases, meta['test_dataset']['sha256'])
         with experiments.lock:
+            meta = experiments.load(item_id)
             directory = experiments.directory(item_id)
-            store.write(directory / (kind + '-predictions.json'), validated)
-            if all((directory / (name + '-predictions.json')).exists() for name in ('baseline', 'candidate')):
-                report = comparison(cases, store.read(directory / 'baseline-predictions.json'),
-                    store.read(directory / 'candidate-predictions.json'))
-                store.write(directory / 'report.json', report)
+            protocol, cases = evaluation_data(meta, split)
+            sha = protocol['splits'][split]['sha256'] if protocol else meta['test_dataset']['sha256']
+            validated = validate_predictions(value, cases, sha)
+            path = directory / prediction_file(split, kind)
+            if protocol:
+                if not isinstance(value, dict) or value.get('protocol_sha256') != protocol['sha256'] or value.get('split') != split:
+                    raise DataError('预测文件必须携带本实验的 protocol_sha256 和评测 split。')
+                model = value.get('model')
+                if not isinstance(model, str) or not model.strip() or len(model) > 200:
+                    raise DataError('必须提供不超过 200 字符的模型检查点标识。')
+                if kind == 'baseline' and model != protocol['baseline']['checkpoint']:
+                    raise DataError('基线模型必须与实验选定的检查点版本一致。')
+                if any(set(row['intents']) - protocol['questions'].keys() for row in validated['predictions'].values()):
+                    raise DataError('预测包含实验协议之外的标签。')
+                for case in cases:
+                    if 'questions' in case and set(validated['predictions'][case['id']]['intents']) - case['questions'].keys():
+                        raise DataError('预测包含当前样本未询问或未标注的问题。')
+                selected = meta.get('final_candidate')
+                if split == 'test' and not selected:
+                    raise HTTPException(409, '请先在验证集选定并锁定最终候选，再执行最终测试。')
+                if split == 'validation' and selected:
+                    raise HTTPException(409, '最终候选已锁定，验证结果不能再更新。')
+                if kind == 'candidate' and not (directory / prediction_file(split, 'baseline')).exists():
+                    raise HTTPException(409, '请先导入同一评测集上的基线结果。')
+                if kind == 'candidate' and split == 'test' and model != selected['model']:
+                    raise DataError('最终测试必须使用已锁定的候选检查点。')
+                validated.update(protocol_sha256=protocol['sha256'], split=split,
+                    baseline_cache_key=baseline_cache_key(protocol, split) if kind == 'baseline' else None)
+                if path.exists() and (kind == 'baseline' or split == 'test') and store.read(path) != validated:
+                    raise HTTPException(409, '基线和最终测试结果不可替换；条件变化请创建新实验。')
+            store.write(path, validated)
+            if all((directory / prediction_file(split, name)).exists() for name in ('baseline', 'candidate')):
+                report = comparison(cases, store.read(directory / prediction_file(split, 'baseline')),
+                    store.read(directory / prediction_file(split, 'candidate')))
+                if protocol:
+                    report.update(split=split, protocol_sha256=protocol['sha256'],
+                        business_scope=protocol['business_scope'],
+                        decision=protocol['decision'], baseline_cache_key=baseline_cache_key(protocol, split),
+                        inference_configuration_verified=False,
+                        prediction_sha256={name: digest(store.read(directory / prediction_file(split, name)))
+                                           for name in ('baseline', 'candidate')})
+                store.write(directory / report_file(split), report)
                 experiments.update(item_id, report_revision=uuid.uuid4().hex)
             experiments.log(item_id, ('原模型' if kind == 'baseline' else '候选模型') + '的外部预测已导入。此操作不代表平台已完成训练。')
-        return {'imported': len(cases), 'report_ready': (directory / 'report.json').exists()}
+        return {'imported': len(cases), 'report_ready': (directory / report_file(split)).exists()}
 
     @app.get('/api/experiments/{item_id}/report')
-    def report(item_id: str):
-        experiments.load(item_id)
-        return store.read(experiments.directory(item_id) / 'report.json')
+    def report(item_id: str, split: str = 'test'):
+        meta = experiments.load(item_id)
+        return load_report(meta, split)
 
     @app.get('/api/experiments/{item_id}/artifacts/{name}')
     def artifact(item_id: str, name: str):
-        experiments.load(item_id)
-        if name not in ('plan.json', 'report.json', 'meta.json', 'baseline-predictions.json', 'candidate-predictions.json'):
+        meta = experiments.load(item_id)
+        if name not in ('plan.json', 'report.json', 'meta.json', 'baseline-predictions.json', 'candidate-predictions.json',
+                        'protocol.json', 'validation-report.json', 'validation-baseline-predictions.json',
+                        'validation-candidate-predictions.json'):
             raise HTTPException(404, '文件不存在。GPU 未接入时不会生成模型包。')
+        if meta.get('protocol_sha256') and name.endswith('report.json'):
+            load_report(meta, 'validation' if name.startswith('validation-') else 'test')
         path = experiments.directory(item_id) / name
         if not path.is_file():
             raise HTTPException(404, '文件尚未生成。')

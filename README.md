@@ -90,3 +90,5 @@ CSV 表头可用 `text,intents,id,group_id`，多标签用 `|` 分隔，无对�
 测试数据使用独立临时目录，不连接 GPU、服务器或真实模型。前端无构建依赖及外部 CDN。默认只允许本机访问，并校验请求 Host/Origin；公网部署需另加认证和访问控制。
 
 Codex 云端准备与接续任务见 [docs/CLOUD_HANDOFF.md](docs/CLOUD_HANDOFF.md)。本地 Claude 登录、SSH 私钥、数据、运行进程和虚拟环境均不会自动迁移到云端。
+
+新实验的固定基线、验证与最终测试顺序，以及 Kev 原生训练文件导出见 [docs/EVALUATION_WORKFLOW.md](docs/EVALUATION_WORKFLOW.md)。不同业务可分别建实验，复用相同基础权重并各自保存适配参数；GPU 推理和训练执行器仍待接入，导出命令不代表已训练。
