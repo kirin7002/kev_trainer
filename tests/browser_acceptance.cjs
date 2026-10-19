@@ -44,7 +44,11 @@ async function main() {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base, { waitUntil: 'networkidle' });
     assert.match(await page.locator('#health-content').innerText(), /未接入/);
+    assert.equal(await page.locator('#nav button').count(), 3);
+    await page.getByText('数据格式与来源说明', { exact: true }).click();
+    await page.getByText('旧版流程示例（不含任务绑定）', { exact: true }).click();
     await page.locator('#ex-load-btn').click();
+    await page.locator('#uploaded-data > summary').click();
     await page.locator('#ds-list').getByRole('button', { name: '预览', exact: true }).first().waitFor();
     await page.locator('#ds-list').getByRole('button', { name: '预览', exact: true }).first().click();
     await page.locator('#modal-back.open').waitFor();
@@ -52,6 +56,7 @@ async function main() {
 
     const objects = Array.from({ length: questionCount }, (_, i) => ({ id: 'object-' + String(i).padStart(2, '0'),
       instructions: 'Synthetic browser object ' + i, criteria: { true: 'fixture yes', false: 'fixture no' } }));
+    await page.getByText('任务设置与格式', { exact: true }).click();
     if (businessScope) await page.locator('#task-scope').fill(businessScope);
     if (explicitQuestions) await page.locator('#task-label-mode').selectOption('explicit_questions');
     await page.locator('#task-file').setInputFiles({ name: 'fixture-task.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ name: '浏览器合成任务（非真实目录）', objects })) });
@@ -75,32 +80,36 @@ async function main() {
       await page.locator('#up-btn').click(); versions[role] = await (await response).json();
       await page.waitForFunction(() => !document.getElementById('up-btn').disabled);
     }
-    await page.locator('#nav [data-view=create]').click();
+    await page.locator('#nav [data-view=experiments]').click();
+    await page.locator('#view-experiments [data-go=create]').click();
     await page.locator('#manual-name').fill('浏览器手动验收（仅夹具）');
+    await page.getByText('比较多个训练方案', { exact: true }).click();
     await page.locator('#manual-count').fill('1');
     await page.locator('#manual-minutes').fill('5');
+    await page.getByText('添加回归集（可选）', { exact: true }).click();
     for (const role of Object.keys(versions)) await page.locator('#manual-' + role).selectOption(versions[role].id);
     const created = page.waitForResponse(response => response.url().endsWith('/api/manual-experiments'));
     await page.locator('#manual-create').click(); const experiment = await (await created).json();
     await page.locator('#exp-detail form [name=learning_rate]').waitFor();
-    assert.equal(await page.getByRole('button',{name:'只测原模型基线（不创建 Trial）',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:'评测原模型基线',exact:true}).isDisabled(),true);
     for (const [name, value] of Object.entries({ learning_rate: '.0001', epochs: '1', batch_size: '1', gradient_accumulation: '1', seed: '42' })) {
       await page.locator('#exp-detail form [name=' + name + ']').fill(value);
     }
     await page.locator('#exp-detail form [name=precision]').selectOption('fp32');
     const saved = page.waitForResponse(response => response.url().endsWith('/trials') && response.request().method() === 'POST');
-    await page.getByRole('button', { name: '保存 Trial', exact: true }).click(); const trial = await (await saved).json();
-    await page.getByRole('button', { name: '提交 CPU 准备检查', exact: true }).click();
+    await page.getByRole('button', { name: '保存训练方案', exact: true }).click(); const trial = await (await saved).json();
+    await page.getByRole('button', { name: '检查训练数据', exact: true }).click();
     await page.locator('[data-job-state=QUEUED]').waitFor();
     const worker = spawnSync(python, [path.join(project, 'worker.py'), '--server', base, '--once'], { cwd: project, env: environment, encoding: 'utf8', timeout: 15000 });
     assert.equal(worker.status, 0, worker.stdout + worker.stderr);
     const result = JSON.parse(worker.stdout.trim().split('\n').at(-1)); assert.equal(result.training_verified, false); assert.equal(result.state, 'SUCCEEDED');
-    await page.getByRole('button', { name: '刷新准备检查状态', exact: true }).click();
+    await page.getByRole('button', { name: '刷新状态', exact: true }).click();
     await page.locator('[data-job-state=SUCCEEDED]').waitFor();
+    await page.getByText('导入外部验证结果', { exact: true }).click();
     const validation = { dataset_sha256: versions.validation.sha256, predictions: rows.validation.map(row => ({ id: row.id, intents: intents(row) })) };
     await page.locator('#exp-detail input[type=file]').setInputFiles({ name: 'validation-fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(validation)) });
     await page.getByRole('button', { name: '导入 validation 预测', exact: true }).click();
-    await page.getByRole('button', { name: '按 validation 选定此候选', exact: true }).click();
+    await page.getByRole('button', { name: '选定此方案', exact: true }).click();
     await page.getByRole('button', { name: '已选候选', exact: true }).waitFor();
     if (businessScope) await page.getByText('按业务场景验收', { exact: true }).waitFor();
     if (explicitQuestions) assert.match(await page.locator('#exp-detail').innerText(), /未询问问题/);
@@ -108,11 +117,14 @@ async function main() {
     await page.screenshot({ path: path.join(output, 'manual-desktop.png'), fullPage: true });
 
     // Separate disposable experiment: review/start/cancel a proposal while GPU is disabled.
-    await page.locator('#nav [data-view=create]').click();
+    await page.locator('#nav [data-view=experiments]').click();
+    await page.locator('#view-experiments [data-go=create]').click();
     await page.locator('#manual-name').fill('浏览器方案审查（仅夹具）');
+    await page.getByText('添加回归集（可选）', { exact: true }).click();
     for (const role of Object.keys(versions)) await page.locator('#manual-' + role).selectOption(versions[role].id);
     const optimizationCreated = page.waitForResponse(response => response.url().endsWith('/api/manual-experiments'));
     await page.locator('#manual-create').click(); await optimizationCreated;
+    await page.locator('#optimization-options > summary').click();
     await page.getByRole('button',{name:'新建方案审查（0 额度可离线导入）',exact:true}).click();
     await page.getByRole('button',{name:'导入结构化方案 JSON',exact:true}).waitFor();
     const plan = {schema_version:2,objective:'合成方案审查，非模型效果',hypotheses:['只验证软件审批流程'],
@@ -138,6 +150,7 @@ async function main() {
 
     await page.locator('#nav [data-view=results]').click();
     await page.locator('#rs-exp').selectOption(experiment.id);
+    await page.locator('#external-predictions > summary').click();
     await page.locator('#rs-body input[type=file]').first().waitFor();
     for (const [index, side] of ['baseline', 'candidate'].entries()) {
       const payload = { dataset_sha256: versions.test.sha256, trial_id: trial.id, model: 'browser-fixture-' + side,
@@ -164,7 +177,10 @@ async function main() {
     await page.screenshot({ path: path.join(output, 'results-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
     for (const view of ['data', 'create', 'experiments', 'results']) {
-      await page.locator('#nav [data-view=' + view + ']').click();
+      if (view === 'create') {
+        await page.locator('#nav [data-view=experiments]').click();
+        await page.locator('#view-experiments [data-go=create]').click();
+      } else await page.locator('#nav [data-view=' + view + ']').click();
       await page.waitForTimeout(150);
       const fits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
       if (!fits) {

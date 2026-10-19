@@ -144,3 +144,24 @@ test('business tables preserve scenario names and explicit question counts', () 
   assert.deepEqual(rows.map(row => row.children[0].attrs.text), ['__proto__', 'app']);
   assert.deepEqual(rows.map(row => row.children[2].attrs.text), ['3', '1']);
 });
+
+test('creating a training run stays in the training step of the three-step navigation', () => {
+  const buttons = ['data', 'experiments', 'results'].map(view => ({ dataset: { view },
+    classList: { toggle(name, active) { this.active = active; } } }));
+  const views = ['data', 'create', 'experiments', 'results'].map(view => ({ id: 'view-' + view,
+    classList: { toggle(name, active) { this.active = active; } } }));
+  const calls = [];
+  const context = vm.createContext({
+    document: { querySelectorAll(selector) { return selector === '#nav button' ? buttons : views; } },
+    refreshCreateOptions() { calls.push('create'); }, loadDatasets() { calls.push('data'); },
+    loadExperiments() { calls.push('experiments'); return Promise.resolve(); }, refreshResultsOptions() {},
+  });
+  load(context, 'switchView');
+  context.switchView('create');
+  assert.deepEqual(buttons.filter(b => b.classList.active).map(b => b.dataset.view), ['experiments']);
+  assert.deepEqual(views.filter(v => v.classList.active).map(v => v.id), ['view-create']);
+  assert.deepEqual(calls, ['create']);
+  context.switchView('data');
+  assert.deepEqual(buttons.filter(b => b.classList.active).map(b => b.dataset.view), ['data']);
+  assert.deepEqual(views.filter(v => v.classList.active).map(v => v.id), ['view-data']);
+});
